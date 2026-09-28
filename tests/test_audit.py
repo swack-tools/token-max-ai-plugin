@@ -174,6 +174,7 @@ class AuditTests(unittest.TestCase):
 
     def test_report_does_not_overwrite_a_symlink_target(self):
         self.modules()
+        subprocess.run(['git', 'init', '-q', str(self.root)], check=True, capture_output=True)
         original = self.root / 'precious.txt'
         original.write_text('preserve me')
         out = self.root / 'out'; out.mkdir()
@@ -182,10 +183,12 @@ class AuditTests(unittest.TestCase):
                 str(self.root), '--session', 'none', '--out', str(out)],
                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 2)
+        self.assertIn('symlink', result.stderr.lower())
         self.assertEqual(original.read_text(), 'preserve me')
 
     def test_cli_emits_bounded_report_and_json(self):
         self.modules()
+        subprocess.run(['git', 'init', '-q', str(self.root)], check=True, capture_output=True)
         p = self.log([snapshot(usage())])
         result = subprocess.run([sys.executable, str(SCRIPTS / 'audit.py'), '--project',
                 str(self.root), '--session', str(p), '--out', str(self.root / 'out')],
