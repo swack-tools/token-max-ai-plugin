@@ -2,10 +2,10 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Token Max — Documentation</title>
-<meta name="description" content="Review Codex session logs and project context to find evidence-backed token reductions. Installation, commands, methodology, research and deployment.">
+<meta name="description" content="An in-app token audit for Codex and Claude. Install the plugin, invoke a skill, and get evidence-backed findings in chat.">
 <meta name="theme-color" content="#f6f5f1">
 <meta property="og:title" content="Token Max — Evidence before optimization">
-<meta property="og:description" content="A local Codex audit for understanding token usage and finding reductions you can verify.">
+<meta property="og:description" content="An in-app audit for Codex and Claude, with no terminal setup.">
 <meta property="og:type" content="website"><meta property="og:url" content="https://token-max.swacktech.com/">
 <link rel="canonical" href="https://token-max.swacktech.com/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="styles.css">
@@ -14,9 +14,9 @@
 <a class="skip-link" href="#main">Skip to documentation</a>
 <header class="masthead"><a class="brand" href="#overview" aria-label="Token Max home"><span class="mark" aria-hidden="true">t−</span>token max<small>/ docs</small></a><a class="repository" href="https://github.com/swack-tools/token-max-ai-plugin">View on GitHub ↗</a></header>
 <div class="layout"><aside class="sidebar"><nav aria-label="Documentation"><p class="nav-label">The guide</p><a href="#overview">Overview</a>
-<a href="#install-and-run">Install and run</a>
+<a href="#install-and-run">Install in your app</a>
 <a href="#what-you-get">What you get</a>
-<a href="#run-only-the-local-collector">Run only the local collector</a>
+<a href="#run-only-the-local-collector">In-app requests</a>
 <a href="#report-modes">Report modes &amp; retrieval</a>
 <a href="#what-counts-as-evidence">What counts as evidence?</a>
 <a href="#validate-a-proposed-reduction">Validate a proposed reduction</a>
@@ -27,140 +27,55 @@
 <a href="#development-and-removal">Development and removal</a>
 <a href="#troubleshooting">Troubleshooting</a>
 <a href="#hosting">Website &amp; GitHub Pages</a></nav><div class="sidebar-note"><span class="status-dot" aria-hidden="true"></span>Local evidence collection<br>No API key required</div></aside>
-<main id="main"><section class="intro" id="overview"><p class="eyebrow">CODEX SKILL · TOKEN AUDIT</p><h1>Evidence before<br><em>optimization.</em></h1><p class="lede">Understand where your tokens go.<br>Find changes worth testing.</p><p>Review a Codex session and its project to find <strong>evidence-backed ways to use fewer tokens</strong>. The command checks instruction bloat, repeated exploration, large tool outputs, long files/functions, plugins/MCP, and model-routing rules. It produces a local report with concrete proposals and validation steps.</p>
+<main id="main"><section class="intro" id="overview"><p class="eyebrow">CODEX + CLAUDE · TOKEN AUDIT</p><h1>Evidence before<br><em>optimization.</em></h1><p class="lede">Understand where your tokens go.<br>Find changes worth testing.</p><p>Review your session and available project to find <strong>evidence-backed ways to use fewer tokens</strong>. The command checks instruction bloat, repeated exploration, large tool outputs, long files/functions, plugins/MCP, and model-routing rules. It returns a report in chat with concrete proposals and validation steps.</p>
 <p>It does not equate “smaller file,” “cheaper model,” or “more plugins” with proven savings. Actual usage comes from session counters. Recommendations are labeled measured, estimated, or hypothesis.</p>
 <p><strong>No runtime hooks are installed.</strong> See the <a href="review.html">implementation review, reproducible benchmark and research</a> for measured reductions, added overhead and the limits of quality claims.</p>
 
 <div class="principles"><div><span class="tag measured">Measured</span><p>What the log or file actually records.</p></div><div><span class="tag estimated">Estimated</span><p>A calculation with explicit assumptions.</p></div><div><span class="tag hypothesis">Hypothesis</span><p>A proposed change that needs a test.</p></div></div></section>
-<section id="install-and-run"><h2><span class="section-number">01</span>Install and run</h2>
-
-<p>Requirements: Python <strong>3.10+</strong>, plus Git for repositories or ripgrep for folders without Git. No API key, model call, or Python dependency is needed by the collector.</p>
-<p>Clone the repository and install the skill:</p><pre><code>git clone https://github.com/swack-tools/token-max-ai-plugin.git
-cd token-max-ai-plugin
-python3 scripts/install.py</code></pre>
-<p>The installer links <code class="notranslate">skills/token-audit</code> into <code class="notranslate">~/.agents/skills/token-audit</code> for use across projects. It refuses to replace an existing unrelated skill. Keep this checkout at the same location while the link is installed.</p>
-<p>Open a <strong>new Codex chat</strong> in the project to review, then use the slash menu:</p>
-<pre lang="text" class="notranslate"><code class="notranslate">/skills
-</code></pre>
-<p>Select <strong>Token Audit — Report Only</strong>. You can also send:</p>
-<pre lang="text" class="notranslate"><code class="notranslate">$token-audit Review this session and project. Rank the best token reductions.
-</code></pre>
-<p>Examples:</p>
-<pre lang="text" class="notranslate"><code class="notranslate">$token-audit Audit /path/to/project using /path/to/rollout.jsonl. Focus on AGENTS.md and verbose tools.
-$token-audit Review whether the model-routing rules actually help this project's tasks.
-$token-audit Compare a symbol-navigation plugin against the repeated source reads in this session.
-</code></pre>
-<p>The canonical skill is in <code>skills/token-audit</code>; a project-local <code>.agents/skills/token-audit</code> symlink provides discovery here. The <code>.codex-plugin/plugin.json</code> manifest packages the same skill for plugin distribution. The installer uses direct skill discovery, not marketplace registration; choose one installation route to avoid duplicate copies. Automatic skill selection is enabled; explicit invocation is the most predictable way to run an audit.</p>
-<h3>Why not <code class="notranslate">/token-audit</code>?</h3>
-<p><strong>Codex CLI 0.158.0 no longer supports custom prompt slash commands.</strong> Its <a href="https://github.com/openai/codex/commit/48144a7fa41e2343c7622f01e82eb6065e29b7b7">source history</a> removes that mechanism. The supported slash entry is <code class="notranslate">/skills</code>, followed by this skill; <code class="notranslate">$token-audit</code> is a direct skill mention. Client menus can differ.</p>
-<p>For an <strong>older client that still supports custom prompts</strong>, this project includes a compatibility wrapper:</p>
-<div class="highlight highlight-source-shell"><pre class="notranslate"><code>python3 scripts/install.py --legacy-prompt</code></pre></div>
-<p>Restart that client, then run:</p>
-<pre lang="text" class="notranslate"><code class="notranslate">/prompts:token-audit
-/prompts:token-audit Focus on repeated full-file reads
-</code></pre>
-<p>The wrapper is installed to <code class="notranslate">${CODEX_HOME:-~/.codex}/prompts/token-audit.md</code>. Installing it does not restore removed client functionality. It delegates to the same skill instead of duplicating audit instructions.</p>
+<section id="install-and-run"><h2><span class="section-number">01</span>Install in your app</h2>
+<p>The default audit needs no terminal, Python installation or API key. This repository is a custom marketplace, not an official-directory listing.</p>
+<h3>Claude Desktop</h3>
+<p>Open <strong>Customize → Plugins → Add → Add marketplace</strong>, choose a repository, and enter <code>swack-tools/token-max-ai-plugin</code>. Install <strong>token-max</strong>. Alternatively, <a href="token-max.zip">download the plugin ZIP</a> and use the app's custom-plugin upload option. Availability depends on your account and organization policy.</p>
+<h3>Claude Code, including the desktop Code tab</h3>
+<p>Run these slash commands inside your conversation:</p>
+<pre><code>/plugin marketplace add swack-tools/token-max-ai-plugin
+/plugin install token-max@swack-tools
+/token-max:token-audit Review this session and project.</code></pre>
+<h3>Codex Desktop</h3>
+<p>Ask Codex in a chat:</p>
+<pre><code>Add the plugin marketplace swack-tools/token-max-ai-plugin and install token-max@swack-tools.</code></pre>
+<p>The agent can register the marketplace and install the plugin through its in-app tools. You do not need an external terminal. After installation, open a new chat, choose the installed skill from <code>/skills</code> where supported, or send:</p>
+<pre><code>$token-audit Review this session and project. Rank the best token improvements.</code></pre>
+<p>For clients with a plugin directory, choose <strong>Swack Tools</strong> and install <strong>Token Max</strong> after the source is registered. UI labels vary by client. Installation is distinct from merely cloning the repository.</p>
+<p>Official references: <a href="https://developers.openai.com/plugins/build/plugins">OpenAI plugin packaging and marketplaces</a>, <a href="https://code.claude.com/docs/en/plugin-marketplaces">Claude marketplaces</a>, and <a href="https://support.claude.com/en/articles/13837440-use-plugins-in-claude">Claude Desktop plugin installation</a>.</p>
 </section>
-<section id="what-you-get"><h2><span class="section-number">02</span>What you get</h2>
-
-<markdown-accessiblity-table><table role="table">
-<thead>
-<tr>
-<th>File</th>
-<th>Purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code class="notranslate">.token-audit/evidence.md</code></td>
-<td>Compact local measurements for the agent to inspect</td>
-</tr>
-<tr>
-<td><code class="notranslate">.token-audit/evidence.json</code></td>
-<td>Full file inventory and structured log metadata</td>
-</tr>
-<tr>
-<td><code class="notranslate">.token-audit/AUDIT.md</code></td>
-<td>Agent-written findings, priorities, tradeoffs and validation</td>
-</tr>
-</tbody>
-</table></markdown-accessiblity-table>
-<p>This command only writes audit reports. It never applies proposals, changes source/instructions/configuration, installs dependencies/plugins, or registers hooks. Implementation is separate follow-up work outside the skill. The agent boundary is an instruction, not an operating-system sandbox; the deterministic collector only writes its report artifacts.</p>
+<section id="what-you-get"><h2><span class="section-number">02</span>Your report stays in chat</h2>
+<p>The skill reviews the visible session and accessible project, then returns up to five prioritized findings with references, evidence labels, tradeoffs, quality checks and one next experiment. Ask to save or export the report if you want a file; with file tools, the agent can write <code>.token-audit/AUDIT.md</code>.</p>
+<p>No source, instruction, configuration, dependency or plugin changes are made. There are no automatic hooks or background audits. The report-only boundary is agent guidance, not an operating-system sandbox.</p>
+<div class="table-scroll"><table><thead><tr><th>Available access</th><th>What the audit can establish</th></tr></thead><tbody>
+<tr><td>Conversation only</td><td>Visible repetition and context patterns; unseen history and counters remain unknown.</td></tr>
+<tr><td>Selected folder or attached files</td><td>Relevant instructions, source ranges and opportunities for selective reads.</td></tr>
+<tr><td>Host-exposed usage counters</td><td>Recorded usage within that provider's documented scope; no inferred invoice or quota.</td></tr>
+<tr><td>Optional Codex log collector</td><td>Deterministic Codex log metadata when explicitly requested and the host already has a suitable runtime.</td></tr>
+</tbody></table></div>
+<p>In Claude Desktop, select a folder in a file-capable mode or attach the relevant files. Installing a plugin does not grant access to local session logs, the whole disk or hidden conversation history.</p>
 </section>
-<section id="run-only-the-local-collector"><h2><span class="section-number">03</span>Run only the local collector</h2>
-
-<p>This makes the two evidence files without spending model tokens or writing the semantic <code class="notranslate">AUDIT.md</code> review:</p>
-<div class="highlight highlight-source-shell"><pre class="notranslate"><code>python3 skills/token-audit/scripts/audit.py \
-  --project /path/to/project \
-  --session /path/to/rollout.jsonl</code></pre></div>
-<p>Options:</p>
-<markdown-accessiblity-table><table role="table">
-<thead>
-<tr>
-<th>Option</th>
-<th>Behavior</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code class="notranslate">--session auto</code></td>
-<td>Default: use <code class="notranslate">CODEX_THREAD_ID</code> if available and project-matching; otherwise latest modified matching log</td>
-</tr>
-<tr>
-<td><code class="notranslate">--session latest</code></td>
-<td>Latest modified local log whose metadata cwd is the project or a descendant</td>
-</tr>
-<tr>
-<td><code class="notranslate">--session none</code></td>
-<td>Project-only review; no invented session usage</td>
-</tr>
-<tr>
-<td><code class="notranslate">--log-root PATH</code></td>
-<td>Default <code class="notranslate">${CODEX_HOME:-~/.codex}/sessions</code>; specify archived/remote copies explicitly</td>
-</tr>
-<tr>
-<td><code class="notranslate">--instruction PATH</code></td>
-<td>Include an additional instruction file, such as global AGENTS.md; repeatable</td>
-</tr>
-<tr>
-<td><code class="notranslate">--out PATH</code></td>
-<td>Default <code class="notranslate">PROJECT/.token-audit</code>; reruns replace the two evidence files</td>
-</tr>
-<tr><td><code>--usage-only</code></td><td>Print cumulative usage and warnings; skip project inventory and write no files</td></tr>
-<tr><td><code>--full-report</code></td><td>Expand Markdown tables instead of the compact default</td></tr>
-<tr>
-<td><code class="notranslate">--max-file-bytes N</code></td>
-<td>Default 1,000,000; larger files are skipped and disclosed</td>
-</tr>
-<tr>
-<td><code class="notranslate">--encoding NAME</code></td>
-<td>Optional explicit tiktoken encoding for text-only counts</td>
-</tr>
-</tbody>
-</table></markdown-accessiblity-table>
-<p>Selection is never “the newest log anywhere on the machine.” Worktree paths and remote logs may need an explicit <code class="notranslate">--session</code>; verify the report's selected path. An active log is a snapshot and excludes work that has not yet been recorded. No matching log is reported as unknown, and project analysis still runs.</p>
-<h3>Optional text token counts</h3>
-<p>The default reports exact UTF-8 bytes and line counts. It deliberately does not turn characters into approximate tokens using a fixed divisor. To count text with a known encoding in an isolated environment:</p>
-<div class="highlight highlight-source-shell"><pre class="notranslate"><code>python3 -m venv .venv
-.venv/bin/python -m pip install tiktoken
-.venv/bin/python .agents/skills/token-audit/scripts/audit.py \
-  --project /path/to/project --encoding o200k_base</code></pre></div>
-<p><code class="notranslate">o200k_base</code> is an explicit example, <strong>not an assertion about your session model's tokenizer</strong>. Text counts omit message framing, hidden instructions, and multimodal content. The tokenizer may download its vocabulary on first use; file/log contents are not sent. Provider usage counters remain authoritative for the recorded calls.</p>
+<section id="run-only-the-local-collector"><h2><span class="section-number">03</span>Ask for the review you need</h2>
+<pre><code>Review this session for repeated reads and verbose tool results.
+Review the attached CLAUDE.md without changing it.
+Check whether a navigation plugin would replace repeated source reads.
+Show recorded usage if it is available; do not guess missing totals.
+Save this audit report in the project.</code></pre>
+<p>Use these requests with <code>$token-audit</code> in Codex or <code>/token-max:token-audit</code> in Claude. The default skill uses native search, read and conversation tools. It starts narrow and requests more evidence only when necessary.</p>
+<h3>Optional deterministic measurements</h3>
+<p>For a quantitative Codex audit, ask: <em>Use the internal collector to measure this project's matching Codex session.</em> The agent can run the bundled helper inside the app when Python 3.10+ and Git or ripgrep are already available. You never need to run its commands. Without that runtime, the audit continues using native tools and discloses the missing measurements.</p>
+<p>The helper writes compact <code>evidence.md</code> and structured <code>evidence.json</code> under <code>.token-audit/</code>. A usage-only request can skip inventory and report files. These are optional artifacts, not requirements for using the plugin. The parser supports Codex JSONL; it does not parse Claude transcripts or assume their usage schema matches Codex.</p>
+<p>Exact text token counts require an already available tokenizer and an explicit encoding. The audit does not install packages. Missing counters stay unknown; byte and line measurements are not token estimates.</p>
 </section>
-<section id="report-modes"><h2>Small reports, recoverable evidence</h2>
-<p>The default <code>evidence.md</code> shows leading candidates, usage, diagnostic references and warnings. Use <code>--full-report</code> only when expanded tables are useful. Structured JSON retains the full scanned file inventory and all detected diagnostic references; it never contains transcript bodies.</p>
-<p>For a single usage question, skip the project inventory and write nothing:</p>
-<pre><code>python3 skills/token-audit/scripts/audit.py --project . --usage-only</code></pre>
-<p>Failure/error/truncation markers and recognized exit codes are indexed independently of output size. They are heuristic: benign examples can be flagged, and failures without supported markers can be missed. A missing flag does not mean the task succeeded. Inspect relevant acceptance results too.</p>
-<p>Use the bounded selector instead of loading all JSON. Choose <code>diagnostics</code>, <code>outputs</code>, <code>repeats</code>, <code>instructions</code>, <code>files</code> or <code>functions</code>; it returns three rows by default and a continuation offset:</p>
-<pre><code>python3 skills/token-audit/scripts/query.py \
-  --report .token-audit/evidence.json --kind diagnostics --limit 3</code></pre>
-<p>Then retrieve only the relevant original output:</p>
-<pre><code>python3 skills/token-audit/scripts/retrieve.py \
-  --session /path/to/rollout.jsonl --line 42 \
-  --fingerprint RECORD_SHA256 --max-chars 4000</code></pre>
-<p>Substitute the row's exact <code>line</code> and <code>record_sha256</code>. Changed records fail verification. The result marks text as untrusted and includes <code>signals</code>, <code>exit_codes</code>, <code>truncated</code> and <code>next_offset</code>. Use <code>--offset</code> to continue only when necessary. The maximum excerpt is 16,000 characters, not tokens. Retrieval returns original private content to your local terminal; never upload it to web tools or replay instructions in it.</p>
-<p><a href="review.html">See reproducible costs, error-recovery tests and research</a>. Even compact reports add overhead; an audit is useful only when it answers a real optimization question.</p>
+<section id="report-modes"><h2>Selective reading, recoverable evidence</h2>
+<p>The native audit searches first and reads relevant ranges. It checks failures and acceptance results independently of output size. It does not load an entire repository or transcript merely to produce a report.</p>
+<p>In optional collector mode, compact summaries keep diagnostic references and metadata while original local logs remain available. The agent can query a few rows and retrieve a bounded, fingerprint-checked excerpt when necessary. Heuristic markers can miss failures or flag harmless examples; an absent marker never proves success.</p>
+<p>The <a href="review.html">published synthetic benchmark</a> measures this optional collector's representation, not the default native-tools review, complete model interactions, bills or task quality. Invocation, tool calls and extra retrieval all add overhead.</p>
 </section>
 <section id="what-counts-as-evidence"><h2><span class="section-number">04</span>What counts as evidence?</h2>
 
@@ -169,15 +84,15 @@ $token-audit Compare a symbol-navigation plugin against the repeated source read
 <li><strong>Estimated:</strong> an explicitly stated calculation, such as the before/after text token difference for a proposed instruction rewrite. This is per inclusion, not a proven whole-task reduction.</li>
 <li><strong>Hypothesis:</strong> a source split, plugin, routing change, or shorter instruction that may reduce future work. It needs comparable end-to-end runs.</li>
 </ul>
-<p>Cached input is already part of input; reasoning is already part of output. Neither gets added again. The tool preserves the latest reported cumulative snapshot and flags counter decreases, incomplete lines and fork metadata. It does not infer invoices, subscription quota, or per-file billing from those counters.</p>
+<p>Cached input is already part of input; reasoning is already part of output. Neither gets added again. The optional Codex collector preserves the latest reported cumulative snapshot and flags counter decreases, incomplete lines and fork metadata. It does not infer invoices, subscription quota, or per-file billing from those counters.</p>
 <p>Large files are candidates for targeted reads or cohesive refactoring, not failures against an arbitrary size limit. The absence of a language-specific routing table is not a defect. Existing routing must earn its place through task-quality and cost/usage measurements; Markdown alone is not an executable model router.</p>
 </section>
 <section id="validate-a-proposed-reduction"><h2><span class="section-number">05</span>Validate a proposed reduction</h2>
 
 <ol>
-<li>Save baseline evidence using <code class="notranslate">--out .token-audit/before</code> and record the task, starting revision, model, reasoning setting, tool configuration and checks.</li>
+<li>Ask the agent to save baseline evidence and record the task, starting revision, model, reasoning setting, tool configuration and checks.</li>
 <li>Change one thing. Run the same task from the same starting state in a separate safe workspace/session, holding other settings constant.</li>
-<li>Collect <code class="notranslate">--out .token-audit/after</code>. Compare input, cached input, uncached input, output, reasoning, retries, elapsed time, and completion quality. Record cache differences; repeat paired trials when variance matters.</li>
+<li>Ask the agent to save after-run evidence. Compare input, cached input, uncached input, output, reasoning, retries, elapsed time, and completion quality. Record cache differences; repeat paired trials when variance matters.</li>
 <li>Report observed differences separately from causal conclusions. Include the audit's own overhead; never add overlapping proposed savings.</li>
 </ol>
 <p>Do not benchmark by replaying transcript commands with external side effects. No universal percentage saving is claimed by this project.</p>
@@ -234,32 +149,35 @@ $token-audit Compare a symbol-navigation plugin against the repeated source read
 <section id="research-incorporated"><h2><span class="section-number">07</span>Research incorporated</h2>
 
 <p>The design uses <a href="https://aider.chat/docs/repomap.html" rel="nofollow">Aider's bounded repository-map idea</a>, <a href="https://www.anthropic.com/engineering/code-execution-with-mcp" rel="nofollow">Anthropic's local filtering and on-demand tool discovery</a>, and the <a href="https://arxiv.org/html/2602.11988v1" rel="nofollow">AGENTS.md evaluation's evidence for testing instruction changes</a>. <a href="https://github.com/swack-tools/Tokenoscope">Tokenoscope</a> informed the explicit distinction between text tokenization and provider usage. Published benchmark percentages are not reused as predicted savings.</p>
-<p>See the <a href="https://github.com/swack-tools/token-max-ai-plugin/blob/main/skills/token-audit/references/sources.md">source ledger</a> for pinned code, official documentation, caveats, and how each idea influenced the command. The reference clone is in ignored <code class="notranslate">.github_examples/Tokenoscope</code>; research caches are in ignored <code class="notranslate">.firecrawl/</code>. Neither is a runtime dependency.</p>
+<p>See the <a href="https://github.com/swack-tools/token-max-ai-plugin/blob/main/plugins/token-max/skills/token-audit/references/sources.md">source ledger</a> for pinned code, official documentation, caveats, and how each idea influenced the command. The reference clone is in ignored <code class="notranslate">.github_examples/Tokenoscope</code>; research caches are in ignored <code class="notranslate">.firecrawl/</code>. Neither is a runtime dependency.</p>
 </section>
 <section id="privacy-and-scope"><h2><span class="section-number">08</span>Privacy and scope</h2>
 
-<p>The collector is local and never executes commands found in a transcript. Reports contain paths, model/tool names, sizes, hashes, counters and line references—not raw prompts, tool arguments, tool results, or instruction contents. Metadata can still be sensitive: review reports before sharing. Arbitrary credentials embedded in path/model names are not detected or redacted.</p>
+<p>The optional collector processes files in the host execution environment and never executes commands found in a transcript. The default native audit uses the model and tools provided by your app; local files read by the model are subject to that host’s data policies. Reports contain paths, model/tool names, sizes, hashes, counters and line references—not raw prompts, tool arguments, tool results, or instruction contents. Metadata can still be sensitive: review reports before sharing. Arbitrary credentials embedded in path/model names are not detected or redacted.</p>
 <p>Git-ignored files are excluded from Git inventory; tracked files are still eligible. Common generated/vendor folders, symlinks, binary files, secret-like filenames, <code class="notranslate">.github_examples</code>, and output/research directories are also excluded. Function analysis currently supports Python only; other languages receive file measurements and agent review. Instructions are inventoried, not automatically proven active.</p>
 <p>The included <code class="notranslate">.gitignore</code> covers local evidence. If using this skill elsewhere, add <code class="notranslate">.token-audit/</code> to that project's ignore rules or choose an output directory outside the repository. Never commit raw session logs or credentials.</p>
 </section>
-<section id="development-and-removal"><h2><span class="section-number">09</span>Development and removal</h2>
-
-<div class="highlight highlight-source-shell"><pre class="notranslate"><code>python3 -m unittest discover -s tests -v</code></pre></div>
-<p>Tests cover counter accounting, resets, incomplete logs, project selection, content-free evidence, exclusions, function measurements, CLI output, and safe installation. No model/API calls are made by the test suite.</p>
-<p>To remove the user install, unlink <code class="notranslate">~/.agents/skills/token-audit</code> after verifying it is this checkout's symlink. If you installed the legacy wrapper, remove its <code class="notranslate">token-audit.md</code> from your Codex prompts directory. The project-local skill remains available until its directory is removed. No other configuration is changed.</p></section>
+<section id="development-and-removal"><h2><span class="section-number">09</span>Maintenance and removal</h2>
+<p>Uninstall or disable <strong>token-max</strong> through your app's plugin manager. Previously exported reports remain yours. If you used the old symlink installer, remove only that verified Token Max link before installing the marketplace version to avoid duplicate discovery.</p>
+<details><summary>Maintainer commands (not needed by plugin users)</summary>
+<pre><code>git archive --format=zip HEAD:plugins/token-max &gt; site/token-max.zip
+python3 -m unittest discover -s tests -q
+python3 scripts/check_site.py
+claude plugin validate .</code></pre>
+<p><code>plugins/token-max/</code> is the self-contained distributable. The root <code>skills</code> symlink preserves legacy development paths. The old installer is developer compatibility tooling, not the user installation route. GitHub Actions builds the downloadable ZIP from tracked plugin files only.</p></details>
+</section>
 <section id="troubleshooting"><h2><span class="section-number">10</span>Troubleshooting</h2>
-
-<details><summary>The skill does not appear</summary><p>Start a new Codex chat after installation. Confirm <code>~/.agents/skills/token-audit</code> points to this checkout and its <code>SKILL.md</code> exists. If you moved the checkout, verify and remove the stale link before reinstalling. Existing unrelated skills are preserved.</p></details>
-<details><summary>The slash command is unrecognized</summary><p>Use <code>/skills</code> and select token-audit, or mention <code>$token-audit</code>. The optional <code>/prompts:</code> wrapper is only for older clients that retain custom prompts.</p></details>
-<details><summary>The log is missing or belongs to the wrong session</summary><p>Supply the intended JSONL file with <code>--session PATH</code>. Check its metadata cwd, the worktree path, and your Codex home. The collector cannot infer usage from a log without valid counters.</p></details>
-<details><summary>Text token counts are blank</summary><p>This is expected without the optional tokenizer and an explicit <code>--encoding</code>. Bytes and lines are still measured. Do not replace unknown counts with a fixed characters-per-token estimate.</p></details>
-<details><summary>Some files or functions are missing</summary><p>Check ignore rules, byte limits, excluded folders, encoding and symlinks. Function extraction currently requires valid Python syntax. Other languages receive file-level measurements and agent review.</p></details>
+<details><summary>The plugin or skill does not appear</summary><p>Confirm the Swack Tools marketplace is registered and token-max is installed/enabled. Refresh plugins or start a new chat. Use the app's plugin manager to update or reinstall. Organization policy may limit custom sources.</p></details>
+<details><summary>The slash command is unrecognized</summary><p>Claude uses <code>/token-max:token-audit</code>. Codex uses a skill mention, <code>$token-audit</code>, or its skill picker. These are different host interfaces; a standalone <code>/token-audit</code> is not portable.</p></details>
+<details><summary>No project files or token totals appear</summary><p>Select a project folder or attach relevant files inside the app. A plugin cannot reveal hidden history or usage counters. It provides a scoped qualitative review when measurements are unavailable.</p></details>
+<details><summary>Python is missing</summary><p>The default audit does not need Python. Continue in native mode. Only an explicitly requested deterministic Codex collector requires an existing runtime; no installation is needed to obtain a report.</p></details>
 </section>
 <section id="hosting"><h2><span class="section-number">11</span>Website &amp; GitHub Pages</h2>
 
-<p>The documentation is static HTML, CSS, and a small progressive-enhancement script in <code>site/</code>. It has no framework build, analytics, cookies, or log-upload feature.</p>
+<p>The documentation is static HTML, CSS, and a small progressive-enhancement script in <code>site/</code>. It has no framework build, analytics, cookies, or log-upload feature. The downloadable plugin ZIP is built from the same commit as the website.</p>
 <h3>Local preview</h3>
-<pre><code>python3 scripts/check_site.py
+<pre><code>git archive --format=zip HEAD:plugins/token-max &gt; site/token-max.zip
+python3 scripts/check_site.py
 python3 -m http.server 8000 --directory site</code></pre>
 <p>Open <a href="http://localhost:8000">localhost:8000</a>. The site works without JavaScript; the script adds copy buttons and highlights the current navigation section.</p>
 <h3>Deployment workflow</h3>

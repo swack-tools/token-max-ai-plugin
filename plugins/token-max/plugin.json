@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "token-max",
+  "version": "0.3.0",
+  "description": "In-app, report-only token audit for Codex and Claude",
+  "author": {
+    "name": "swackhamer"
+  },
+  "homepage": "https://token-max.swacktech.com",
+  "repository": "https://github.com/swack-tools/token-max-ai-plugin"
+}

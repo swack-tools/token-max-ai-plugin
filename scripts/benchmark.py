@@ -78,7 +78,7 @@ def run_case(name, count, lines, meter):
     critical_line = 2 * count + 2
     # This baseline answers only one question. It is intentionally cheaper and narrower.
     targeted = json.dumps(expected, sort_keys=True)
-    skill_text = (SKILL / 'SKILL.md').read_text()
+    skill_text = (SKILL / 'SKILL.md').read_text() + '\n' + (SKILL / 'references/collector.md').read_text()
     references = '\n'.join((SKILL / 'references' / p).read_text()
                            for p in ('review.md', 'sources.md'))
     tokens = lambda text: meter.measure(text)['text_tokens']

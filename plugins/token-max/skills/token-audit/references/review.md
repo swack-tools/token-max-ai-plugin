@@ -1,13 +1,18 @@
 # Review rubric
 
-The collector provides measurements and candidates. The agent supplies the
-semantic review. Do not call a candidate a defect until its mechanism is clear.
-This command writes reports only. Applying a proposal is separate work outside
+The native audit uses the host's available evidence. An optional Codex collector
+provides measurements and candidates. Do not call a candidate a defect until its
+mechanism is clear. Return the report in chat; save a file only when requested.
+Applying a proposal is separate work outside
 the skill, even if the proposed changes appear harmless.
 This is an on-demand skill, not a runtime hook: it never intercepts tool results,
 compresses model context, or changes client routing automatically.
 
-## Establish what the log measures
+## Establish what the log measures (optional Codex collector)
+
+These fields describe Codex logs only. For Claude or another host, use its exposed
+usage and verified schema; otherwise state that usage is unknown. Do not infer
+access to a transcript or counters from installing this plugin.
 
 - `token_usage_record.thread_token_usage` and
   `event_msg.token_count.info.total_token_usage` are cumulative snapshots. Use

@@ -53,7 +53,7 @@ def validate_site(site):
         if path.is_symlink():
             errors.append(f'symlink in publish directory: {path.name}')
         elif path.is_file():
-            if path.name not in ('CNAME', '.nojekyll') and path.suffix not in ALLOWED:
+            if path.relative_to(site).as_posix() not in ('CNAME', '.nojekyll', 'token-max.zip') and path.suffix not in ALLOWED:
                 errors.append(f'unexpected publish file: {path.relative_to(site)}')
             if path.suffix == '.html':
                 page = Page()

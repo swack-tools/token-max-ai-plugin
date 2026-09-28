@@ -1,7 +1,7 @@
 {
   "name": "token-max",
-  "version": "0.2.0",
-  "description": "Report-only Codex session and project token audit",
+  "version": "0.3.0",
+  "description": "In-app, report-only token audit for Codex and Claude",
   "author": {
     "name": "swackhamer"
   },
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Token Max",
     "shortDescription": "Find evidence-backed token improvements without code changes.",
-    "longDescription": "Local collection, compact reports, failure signals and targeted evidence retrieval. No runtime hooks or automatic project changes.",
+    "longDescription": "Run an audit inside your chat using available project tools. No terminal setup or Python dependency for the default review; optional local collectors support Codex measurements.",
     "developerName": "swackhamer",
     "category": "Productivity",
     "capabilities": [],

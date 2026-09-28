@@ -46,6 +46,12 @@ class SiteTests(unittest.TestCase):
         self.assertTrue(any('CNAME' in error for error in errors))
         self.assertTrue(any('unexpected publish file' in error for error in errors))
 
+    def test_only_named_plugin_archive_is_publishable(self):
+        (self.site / 'token-max.zip').write_bytes(b'plugin fixture')
+        self.assertEqual(self.check('<a href="token-max.zip">Install</a>'), [])
+        (self.site / 'private.zip').write_bytes(b'private fixture')
+        self.assertTrue(any('unexpected publish file' in error for error in self.check('')))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,0 +1,17 @@
+{
+  "name": "swack-tools",
+  "owner": {
+    "name": "swackhamer"
+  },
+  "plugins": [
+    {
+      "name": "token-max",
+      "source": "./plugins/token-max",
+      "description": "In-app, report-only token audit for Codex and Claude",
+      "version": "0.3.0"
+    }
+  ],
+  "metadata": {
+    "description": "In-app token audits for Codex and Claude"
+  }
+}

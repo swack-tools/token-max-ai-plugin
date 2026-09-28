@@ -1,49 +1,35 @@
 # Token Max
 
-A report-only Codex plugin/skill for finding evidence-backed token improvements.
-It reviews session usage and project context without changing code, instructions,
-configuration, hooks or dependencies. Only local audit reports are written.
+An in-app, report-only token audit for **Codex and Claude**. Install the plugin,
+ask for an audit, and get findings in chat. No terminal, Python setup or API key
+is required for the default review. It does not change your code or settings.
 
-## Install and run
+## Install
 
-Requires Python 3.10+ and Git (or ripgrep for project inventory).
+- **Claude Desktop:** Customize → Plugins → Add → Add marketplace → enter
+  `swack-tools/token-max-ai-plugin`, then install **token-max**.
+- **Claude Code:** run these inside the chat:
+  ```text
+  /plugin marketplace add swack-tools/token-max-ai-plugin
+  /plugin install token-max@swack-tools
+  ```
+- **Codex Desktop:** ask Codex: “Add the plugin marketplace
+  `swack-tools/token-max-ai-plugin` and install `token-max@swack-tools`.”
+  Codex handles setup in the app; open a new chat after installation.
 
-```sh
-git clone https://github.com/swack-tools/token-max-ai-plugin.git
-cd token-max-ai-plugin
-python3 scripts/install.py
-```
+## Use
 
-Open a new Codex chat, use `/skills`, and select **Token Audit — Report Only**.
-Or invoke it directly:
+- **Claude:** `/token-max:token-audit Review this session and project.`
+- **Codex:** `$token-audit Review this session and project.` Or choose the skill
+  from `/skills` where available.
 
-```text
-$token-audit Report where this session and project could use fewer tokens.
-```
+The report appears in chat; say “save the report” for a file. Select a project
+folder or attach relevant files in the app for project findings. Unavailable
+history or token counters are reported as unknown. Optional Codex collectors run
+internally only when requested and supported; no background hooks run.
 
-Reports: `.token-audit/evidence.md`, `evidence.json`, and agent-written `AUDIT.md`.
-For just usage counters, with no report files or model call:
+**[Full guide and plugin download](https://token-max.swacktech.com)** ·
+**[Evidence, benchmarks and limitations](https://token-max.swacktech.com/review.html)**
 
-```sh
-python3 skills/token-audit/scripts/audit.py --project . --usage-only
-```
-
-**[Full documentation](https://token-max.swacktech.com)** ·
-**[Benchmarks, quality checks and research](https://token-max.swacktech.com/review.html)**
-
-The compact report retains diagnostic references; bounded retrieval recovers
-original evidence. Synthetic text reductions are measured; whole-task savings
-and unchanged model quality still require paired trials. No runtime hooks run.
-
-## Development
-
-```sh
-python3 -m unittest discover -s tests -q
-python3 scripts/check_site.py
-python3 -m http.server 8000 --directory site
-```
-
-`skills/` is canonical; `.agents/skills/` provides project discovery. The installer
-links the same skill user-wide. `.codex-plugin/plugin.json` packages it for plugin
-distribution; avoid installing duplicate copies. GitHub Actions checks changes
-and deploys `site/` to Pages on `main` through the repository’s Actions publishing source.
+This repository supplies a custom marketplace; it is not an official-directory
+listing. Maintainer tests and packaging instructions are on the website.
