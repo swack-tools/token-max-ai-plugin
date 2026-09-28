@@ -1,0 +1,11 @@
+.github_examples/
+.firecrawl/
+.token-audit/
+.token-audit-benchmark.json
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.DS_Store

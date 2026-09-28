@@ -1,0 +1,20 @@
+{
+  "name": "token-max",
+  "version": "0.2.0",
+  "description": "Report-only Codex session and project token audit",
+  "author": {
+    "name": "swackhamer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Token Max",
+    "shortDescription": "Find evidence-backed token improvements without code changes.",
+    "longDescription": "Local collection, compact reports, failure signals and targeted evidence retrieval. No runtime hooks or automatic project changes.",
+    "developerName": "swackhamer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Use $token-audit to report where this session and project could use fewer tokens without changing code."
+  },
+  "repository": "https://github.com/swack-tools/token-max-ai-plugin",
+  "homepage": "https://token-max.swacktech.com"
+}
