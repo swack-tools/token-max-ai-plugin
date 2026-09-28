@@ -23,6 +23,10 @@ is required for the default review. It does not change your code or settings.
 - **Codex:** `$token-audit Review this session and project.` Or choose the skill
   from `/skills` where available.
 
+The report includes a copyable fix prompt per actionable finding. Ask “give me one
+combined fix prompt” to cover them all. Prompts are guidance; the audit never runs
+them. [Examples](https://token-max.swacktech.com/#fix-prompts).
+
 The report appears in chat; say “save the report” for a file. Select a project
 folder or attach relevant files in the app for project findings. Unavailable
 history or token counters are reported as unknown. Optional Codex collectors run

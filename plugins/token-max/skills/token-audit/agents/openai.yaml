@@ -1,4 +1,4 @@
 interface:
   display_name: "Token Audit — Report Only"
-  short_description: "Report token improvements without changing code"
-  default_prompt: "Use $token-audit to report evidence-backed token improvements without modifying code or configuration."
+  short_description: "Report token improvements and copyable fix prompts"
+  default_prompt: "Use $token-audit to report evidence-backed token improvements with copyable fix prompts, without modifying code or configuration."

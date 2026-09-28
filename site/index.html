@@ -16,6 +16,7 @@
 <div class="layout"><aside class="sidebar"><nav aria-label="Documentation"><p class="nav-label">The guide</p><a href="#overview">Overview</a>
 <a href="#install-and-run">Install in your app</a>
 <a href="#what-you-get">What you get</a>
+<a href="#fix-prompts">Copyable fix prompts</a>
 <a href="#run-only-the-local-collector">In-app requests</a>
 <a href="#report-modes">Report modes &amp; retrieval</a>
 <a href="#what-counts-as-evidence">What counts as evidence?</a>
@@ -50,7 +51,7 @@
 <p>Official references: <a href="https://developers.openai.com/plugins/build/plugins">OpenAI plugin packaging and marketplaces</a>, <a href="https://code.claude.com/docs/en/plugin-marketplaces">Claude marketplaces</a>, and <a href="https://support.claude.com/en/articles/13837440-use-plugins-in-claude">Claude Desktop plugin installation</a>.</p>
 </section>
 <section id="what-you-get"><h2><span class="section-number">02</span>Your report stays in chat</h2>
-<p>The skill reviews the visible session and accessible project, then returns up to five prioritized findings with references, evidence labels, tradeoffs, quality checks and one next experiment. Ask to save or export the report if you want a file; with file tools, the agent can write <code>.token-audit/AUDIT.md</code>.</p>
+<p>The skill reviews the visible session and accessible project, then returns up to five prioritized findings with references, evidence labels, tradeoffs, quality checks, a copyable fix prompt per actionable finding and one next experiment. Ask to save or export the report if you want a file; with file tools, the agent can write <code>.token-audit/AUDIT.md</code>.</p>
 <p>No source, instruction, configuration, dependency or plugin changes are made. There are no automatic hooks or background audits. The report-only boundary is agent guidance, not an operating-system sandbox.</p>
 <div class="table-scroll"><table><thead><tr><th>Available access</th><th>What the audit can establish</th></tr></thead><tbody>
 <tr><td>Conversation only</td><td>Visible repetition and context patterns; unseen history and counters remain unknown.</td></tr>
@@ -76,6 +77,39 @@ Save this audit report in the project.</code></pre>
 <p>The native audit searches first and reads relevant ranges. It checks failures and acceptance results independently of output size. It does not load an entire repository or transcript merely to produce a report.</p>
 <p>In optional collector mode, compact summaries keep diagnostic references and metadata while original local logs remain available. The agent can query a few rows and retrieve a bounded, fingerprint-checked excerpt when necessary. Heuristic markers can miss failures or flag harmless examples; an absent marker never proves success.</p>
 <p>The <a href="review.html">published synthetic benchmark</a> measures this optional collector's representation, not the default native-tools review, complete model interactions, bills or task quality. Invocation, tool calls and extra retrieval all add overhead.</p>
+</section>
+<section id="fix-prompts"><h2>From findings to copyable fix prompts</h2>
+<p>Available in plugin <strong>0.4.0</strong>. Use the existing audit command; no new command, hook or runtime is needed. Each actionable finding includes a short prompt by default. Ask for one combined prompt to cover all actionable findings without repeating shared constraints. On a follow-up, the skill reuses the visible audit and only checks evidence that is missing or stale.</p>
+<h3>Ask inside your app</h3>
+<pre><code>$token-audit Review this project and include a fix prompt for each actionable finding.
+/token-max:token-audit Review this project and give me one combined fix prompt.</code></pre>
+<p>The first example is for Codex; the second is for Claude. After an audit, either host also accepts: <em>Using the audit above, give me only one combined fix prompt. Do not implement it.</em></p>
+<h3>Example: one finding</h3>
+<p><strong>Illustrative finding:</strong> a review of a selected project found that its audit instructions request full log dumps. This is an example output shape, not a measured defect or savings claim about your project.</p>
+<pre><code>Implementation guidance — run separately if you choose:
+In the selected project, inspect skills/review/SKILL.md under “Read logs”;
+the audit found an instruction to dump whole logs. Replace that step with
+search and bounded excerpts. After truncation, narrow the next read.
+Preserve failure detection, source references and access to omitted details.
+Check a verbose success log containing a short late failure and confirm it
+is still found. Compare total usage, retries and finding accuracy on matched
+tasks before claiming savings. Preserve unrelated changes and required checks.</code></pre>
+<h3>Example: combined prompt</h3>
+<p>This illustrative audit also found that the same skill always loads <code>references/research.md</code>. A combined prompt retains both evidence references and consolidates their validation.</p>
+<pre><code>Implementation guidance — run separately if you choose:
+In the selected project, recheck these audit findings against current files:
+1. skills/review/SKILL.md, “Read logs”: whole-log dumps were requested.
+   Use targeted searches and bounded excerpts, narrowing after truncation.
+2. skills/review/SKILL.md, “References”: references/research.md was always
+   loaded. Read only the sections needed to verify the current finding.
+Preserve required instructions, error detection and recoverable source evidence.
+Treat savings as a hypothesis. Validate both proposals on small and verbose
+tasks, including short late errors, before adopting them. Record total usage
+when available, retrievals, retries and finding accuracy; otherwise report
+usage as unknown. Preserve unrelated changes and run the relevant checks.
+Report changes, validation and remaining uncertainty.</code></pre>
+<p>Actual prompts name the inspected project, concrete evidence, constraints and appropriate checks. An unverified hypothesis gets a validation-first prompt; unavailable evidence gets an investigation step. If there are no actionable findings, the report says so and does not invent a fix prompt.</p>
+<p><strong>Generating a prompt does not execute it.</strong> Copy it into a separate implementation request when ready. The audit does not change code or configuration, install tools, commit, push or deploy. Those external actions are not included in generated prompts unless explicitly requested. Secrets and private log bodies are excluded. Prompt text adds output tokens; this feature improves the handoff and has no demonstrated net token saving.</p>
 </section>
 <section id="what-counts-as-evidence"><h2><span class="section-number">04</span>What counts as evidence?</h2>
 
