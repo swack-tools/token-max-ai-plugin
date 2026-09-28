@@ -1,6 +1,6 @@
 {
   "name": "token-max",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "In-app, report-only token audit for Codex and Claude",
   "author": {
     "name": "swackhamer"
