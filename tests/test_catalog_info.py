@@ -149,7 +149,7 @@ class CatalogInfoTests(unittest.TestCase):
             root = Path(directory)
             manifest = root / "plugins" / "example" / "mcp.json"
             manifest.parent.mkdir(parents=True)
-            manifest.write_text('{"mcpServers": {"package-server": {}}}')
+            manifest.write_text('{"mcpServers": {"package-server": {"entrypoint": "src/server.rs"}}}')
             package_source = root / "plugins" / "example" / "src" / "server.rs"
             package_source.parent.mkdir(parents=True)
             package_source.write_text('tool("package_tool", "Package tool", "Evidence-backed package tool");')
@@ -199,6 +199,20 @@ class CatalogInfoTests(unittest.TestCase):
             self.assertIn("skill:sample", capabilities)
             self.assertNotIn("skill:not-discoverable", capabilities)
 
+    def test_default_and_custom_skill_paths_are_both_inventoried(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "plugins" / "example"
+            package.mkdir(parents=True)
+            (package / "plugin.json").write_text('{"name": "example", "skills": "additional-skills"}')
+            for folder, name in (("skills/default", "default-skill"), ("additional-skills/custom", "custom-skill")):
+                skill = package / folder / "SKILL.md"
+                skill.parent.mkdir(parents=True)
+                skill.write_text(f"---\nname: {name}\n---\n")
+            capabilities, _, _ = checker._native(root, "example")
+            self.assertIn("skill:default-skill", capabilities)
+            self.assertIn("skill:custom-skill", capabilities)
+
     def test_command_inventory_ignores_nested_documentation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -236,7 +250,7 @@ class CatalogInfoTests(unittest.TestCase):
             root = Path(directory)
             package = root / "plugins" / "example"
             package.mkdir(parents=True)
-            (package / "mcp.json").write_text('{"mcpServers": {"example-server": {}}}')
+            (package / "mcp.json").write_text('{"mcpServers": {"example-server": {"entrypoint": "src/server.py"}}}')
             capabilities, _, _ = checker._native(root, "example")
             self.assertIn("mcp_server:example-server", capabilities)
 
@@ -246,9 +260,10 @@ class CatalogInfoTests(unittest.TestCase):
             package = root / "plugins" / "example"
             source = package / "src"
             source.mkdir(parents=True)
-            (package / "plugin.json").write_text('{"name": "example", "mcpServers": {"inline-server": {}}}')
+            (package / "plugin.json").write_text('{"name": "example", "mcpServers": {"inline-server": {"entrypoint": "src/server.py"}}}')
             (source / "server.py").write_text('@server.tool()\ndef python_tool():\n    pass\n')
             (source / "server.ts").write_text('server.tool("typescript-tool", {});')
+            (package / "mcp.json").write_text('{"mcpServers": {"typescript-server": {"entrypoint": "src/server.ts"}}}')
             capabilities, _, _ = checker._native(root, "example")
             self.assertIn("mcp_server:inline-server", capabilities)
             self.assertIn("mcp_tool:python_tool", capabilities)
@@ -257,6 +272,19 @@ class CatalogInfoTests(unittest.TestCase):
     def test_javascript_inventory_handles_template_literals(self):
         source = 'server.tool(`live-tool`, {}); const docs = `server.tool("fake-tool", {})`;'
         self.assertEqual({"live-tool"}, checker._js_tool_names(source))
+
+    def test_mcp_tool_inventory_ignores_unregistered_code_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "plugins" / "example"
+            source = package / "src"
+            source.mkdir(parents=True)
+            (package / "mcp.json").write_text('{"mcpServers": {"example-server": {"entrypoint": "src/server.py"}}}')
+            (source / "server.py").write_text('@server.tool()\ndef actual_tool():\n    pass\n')
+            (source / "skill-helper.py").write_text('@server.tool()\ndef unrelated_tool():\n    pass\n')
+            capabilities, _, _ = checker._native(root, "example")
+            self.assertIn("mcp_tool:actual_tool", capabilities)
+            self.assertNotIn("mcp_tool:unrelated_tool", capabilities)
 
     def test_nested_mcp_manifest_is_not_treated_as_registered(self):
         with tempfile.TemporaryDirectory() as directory:

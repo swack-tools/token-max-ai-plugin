@@ -38,12 +38,25 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
     else:
         if not isinstance(manifest_data, dict) or manifest_data.get("name") != plugin_id:
             errors.append(f"catalog pluginId does not match canonical package manifest: {plugin_id}")
-    skill_root_value = manifest_data.get("skills", "skills") if isinstance(manifest_data, dict) else "skills"
-    skill_root = (package / str(skill_root_value)).resolve()
-    if package.resolve() not in skill_root.parents and skill_root != package.resolve():
-        errors.append("plugin skill path points outside the canonical package")
-        skill_root = package / "skills"
-    skill_files = [skill_root] if skill_root.is_file() and skill_root.name == "SKILL.md" else list(skill_root.glob("*/SKILL.md"))
+    skill_roots_value = manifest_data.get("skills", "skills") if isinstance(manifest_data, dict) else "skills"
+    skill_roots = skill_roots_value if isinstance(skill_roots_value, list) else [skill_roots_value]
+    resolved_skill_roots = {(package / "skills").resolve()}
+    for skill_root_value in skill_roots:
+        if not isinstance(skill_root_value, str):
+            errors.append("plugin skill paths must be strings")
+            continue
+        skill_root = (package / skill_root_value).resolve()
+        if package.resolve() not in skill_root.parents and skill_root != package.resolve():
+            errors.append("plugin skill path points outside the canonical package")
+            continue
+        resolved_skill_roots.add(skill_root)
+    skill_files = []
+    for skill_root in sorted(resolved_skill_roots):
+        if skill_root.is_file() and skill_root.name == "SKILL.md":
+            skill_files.append(skill_root)
+        elif skill_root.is_dir():
+            skill_files.extend(skill_root.glob("*/SKILL.md"))
+    skill_files = sorted(set(skill_files))
     for skill in skill_files:
         text = skill.read_text(encoding="utf-8")
         match = re.search(r"(?ms)^---\s*\n(.*?)\n---", text)
@@ -105,16 +118,38 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
             errors.append(f"native MCP manifest has invalid mcpServers object: {rel}")
         elif isinstance(servers, dict):
             capabilities.update(f"mcp_server:{name}" for name in servers)
-    excluded_dirs = {"test", "tests", "fixture", "fixtures", "example", "examples", "reference", "references", "doc", "docs"}
-    code_files = [
-        path for path in package.rglob("*")
-        if path.is_file() and not excluded_dirs.intersection(part.lower() for part in path.relative_to(package).parts[:-1])
-    ]
+    mcp_sources: set[Path] = set()
     if any(cap.startswith("mcp_server:") for cap in capabilities):
-        for source in (path for path in code_files if path.suffix == ".rs"):
+        for manifest in manifest_files:
+            if not manifest.is_file():
+                continue
+            try:
+                data = json.loads(manifest.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            servers = data.get("mcpServers", data if manifest.name.lower() == ".mcp.json" else {}) if isinstance(data, dict) else {}
+            if not isinstance(servers, dict):
+                continue
+            for server in servers.values():
+                if not isinstance(server, dict):
+                    continue
+                candidates = []
+                for key in ("entrypoint", "source", "path"):
+                    value = server.get(key)
+                    if isinstance(value, str):
+                        candidates.append(value)
+                args = server.get("args", [])
+                if isinstance(args, list):
+                    candidates.extend(arg for arg in args if isinstance(arg, str) and Path(arg).suffix in {".rs", ".py", ".ts", ".tsx", ".js", ".jsx"})
+                for candidate in candidates:
+                    source = (package / candidate).resolve()
+                    if package.resolve() in source.parents and source.is_file() and source.suffix in {".rs", ".py", ".ts", ".tsx", ".js", ".jsx"}:
+                        mcp_sources.add(source)
+    if any(cap.startswith("mcp_server:") for cap in capabilities):
+        for source in (path for path in mcp_sources if path.suffix == ".rs"):
             text = source.read_text(encoding="utf-8", errors="replace")
             capabilities.update(f"mcp_tool:{name}" for name in _rust_tool_names(text))
-        for source in (path for path in code_files if path.suffix == ".py"):
+        for source in (path for path in mcp_sources if path.suffix == ".py"):
             try:
                 tree = ast.parse(source.read_text(encoding="utf-8"))
             except (OSError, SyntaxError, UnicodeError):
@@ -126,7 +161,7 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
                     if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute) and decorator.func.attr == "tool":
                         named = next((kw.value.value for kw in decorator.keywords if kw.arg == "name" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str)), node.name)
                         capabilities.add(f"mcp_tool:{named}")
-        for source in (path for path in code_files if path.suffix in {".ts", ".tsx", ".js", ".jsx"}):
+        for source in (path for path in mcp_sources if path.suffix in {".ts", ".tsx", ".js", ".jsx"}):
             try:
                 text = source.read_text(encoding="utf-8")
             except (OSError, UnicodeError):
