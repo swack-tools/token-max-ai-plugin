@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import ast
 import json
 import re
 import subprocess
@@ -21,6 +22,7 @@ CANONICAL_PLUGIN_ID = "token-max"
 
 
 def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
+    root = root.resolve()
     package = root / "plugins" / plugin_id
     capabilities: set[str] = set()
     hook_targets: set[str] = set()
@@ -28,6 +30,7 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
     if not package.is_dir():
         return capabilities, hook_targets, [f"canonical plugin package is missing: plugins/{plugin_id}"]
     package_manifest = package / "plugin.json"
+    manifest_data = {}
     try:
         manifest_data = json.loads(package_manifest.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -35,7 +38,13 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
     else:
         if not isinstance(manifest_data, dict) or manifest_data.get("name") != plugin_id:
             errors.append(f"catalog pluginId does not match canonical package manifest: {plugin_id}")
-    for skill in package.rglob("SKILL.md"):
+    skill_root_value = manifest_data.get("skills", "skills") if isinstance(manifest_data, dict) else "skills"
+    skill_root = (package / str(skill_root_value)).resolve()
+    if package.resolve() not in skill_root.parents and skill_root != package.resolve():
+        errors.append("plugin skill path points outside the canonical package")
+        skill_root = package / "skills"
+    skill_files = [skill_root] if skill_root.is_file() and skill_root.name == "SKILL.md" else list(skill_root.glob("*/SKILL.md"))
+    for skill in skill_files:
         text = skill.read_text(encoding="utf-8")
         match = re.search(r"(?ms)^---\s*\n(.*?)\n---", text)
         if match:
@@ -52,8 +61,9 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
             errors.append(f"skill frontmatter is missing or malformed: {skill.relative_to(root).as_posix()}")
     for command in package.rglob("commands/*.md"):
         capabilities.add(f"command:{command.stem}")
-    for manifest in package.rglob("*.json"):
-        if manifest.name.lower() not in {"hooks.json", "mcp.json", ".mcp.json"}:
+    manifest_files = [package / "plugin.json", package / "hooks.json", package / "mcp.json", package / ".mcp.json"]
+    for manifest in manifest_files:
+        if not manifest.is_file():
             continue
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
@@ -65,7 +75,7 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
             continue
         rel = manifest.relative_to(root).as_posix()
         hooks = data.get("hooks", {}) if isinstance(data, dict) else {}
-        if manifest.name.lower() == "hooks.json" and (not isinstance(data, dict) or "hooks" not in data):
+        if manifest.name.lower() == "hooks.json" and "hooks" not in data:
             errors.append(f"native hooks manifest is missing its hooks object: {rel}")
         if isinstance(data, dict) and "hooks" in data and not isinstance(hooks, dict):
             errors.append(f"native hooks manifest has invalid hooks object: {rel}")
@@ -88,10 +98,33 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
             errors.append(f"native MCP manifest has invalid mcpServers object: {rel}")
         elif isinstance(servers, dict):
             capabilities.update(f"mcp_server:{name}" for name in servers)
-    rust_sources = list(package.rglob("*.rs"))
-    for source in rust_sources:
-        text = source.read_text(encoding="utf-8", errors="replace")
-        capabilities.update(f"mcp_tool:{name}" for name in _rust_tool_names(text))
+    excluded_dirs = {"test", "tests", "fixture", "fixtures", "example", "examples", "reference", "references", "doc", "docs"}
+    code_files = [
+        path for path in package.rglob("*")
+        if path.is_file() and not excluded_dirs.intersection(part.lower() for part in path.relative_to(package).parts[:-1])
+    ]
+    if any(cap.startswith("mcp_server:") for cap in capabilities):
+        for source in (path for path in code_files if path.suffix == ".rs"):
+            text = source.read_text(encoding="utf-8", errors="replace")
+            capabilities.update(f"mcp_tool:{name}" for name in _rust_tool_names(text))
+        for source in (path for path in code_files if path.suffix == ".py"):
+            try:
+                tree = ast.parse(source.read_text(encoding="utf-8"))
+            except (OSError, SyntaxError, UnicodeError):
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for decorator in node.decorator_list:
+                    if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute) and decorator.func.attr == "tool":
+                        named = next((kw.value.value for kw in decorator.keywords if kw.arg == "name" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str)), node.name)
+                        capabilities.add(f"mcp_tool:{named}")
+        for source in (path for path in code_files if path.suffix in {".ts", ".tsx", ".js", ".jsx"}):
+            try:
+                text = source.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                continue
+            capabilities.update(f"mcp_tool:{name}" for name in _js_tool_names(text))
     return capabilities, hook_targets, errors
 
 
@@ -123,6 +156,14 @@ def _rust_tool_names(text: str) -> set[str]:
             for j in range(start, i):
                 if masked[j] != "\n":
                     masked[j] = " "
+            continue
+        char_literal = re.match(r"'(?:\\.|[^'\\\n])'", text[i:])
+        if char_literal:
+            end = i + len(char_literal.group(0))
+            for j in range(i, end):
+                if masked[j] != "\n":
+                    masked[j] = " "
+            i = end
             continue
         raw = re.match(r"r(#+)?\"", text[i:])
         if raw:
@@ -164,6 +205,61 @@ def _rust_tool_names(text: str) -> set[str]:
     code = "".join(masked)
     names = set()
     for match in re.finditer(r"\btool\s*\(\s*", code):
+        quote_at = match.end()
+        while quote_at < len(text) and text[quote_at].isspace():
+            quote_at += 1
+        name = literals.get(quote_at)
+        if name and re.fullmatch(r"[a-zA-Z0-9_-]+", name):
+            names.add(name)
+    return names
+
+
+def _js_tool_names(text: str) -> set[str]:
+    """Read literal MCP tool registrations from JavaScript or TypeScript."""
+    masked = list(text)
+    literals: dict[int, str] = {}
+    i = 0
+    while i < len(text):
+        if text.startswith("//", i):
+            end = text.find("\n", i)
+            end = len(text) if end < 0 else end
+            for j in range(i, end):
+                masked[j] = " "
+            i = end
+            continue
+        if text.startswith("/*", i):
+            end_at = text.find("*/", i + 2)
+            end = len(text) if end_at < 0 else end_at + 2
+            for j in range(i, end):
+                if masked[j] != "\n":
+                    masked[j] = " "
+            i = end
+            continue
+        if text[i] in {'"', "'"}:
+            quote = text[i]
+            start = i
+            i += 1
+            value = []
+            while i < len(text):
+                if text[i] == "\\" and i + 1 < len(text):
+                    value.append(text[i + 1])
+                    i += 2
+                elif text[i] == quote:
+                    i += 1
+                    break
+                else:
+                    value.append(text[i])
+                    i += 1
+            literals[start] = "".join(value)
+            for j in range(start, i):
+                if masked[j] != "\n":
+                    masked[j] = " "
+            masked[start] = "§"
+            continue
+        i += 1
+    code = "".join(masked)
+    names = set()
+    for match in re.finditer(r"\.(?:tool|registerTool)\s*\(\s*", code):
         quote_at = match.end()
         while quote_at < len(text) and text[quote_at].isspace():
             quote_at += 1
@@ -317,6 +413,11 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
         for ref in example.get("capability_refs", []):
             if ref not in capabilities:
                 errors.append(f"example references unknown native capability: {ref}")
+    changelog = data.get("changelog")
+    if changelog is not None:
+        changelog_sources = _source_entries(changelog)
+        if not any(id(source) in resolved_sources for source in changelog_sources):
+            errors.append("changelog must be null unless it has at least one resolved repository source")
     cited = {ref for example in data.get("examples", []) for ref in example.get("capability_refs", [])}
     for cap in capabilities:
         if cap.startswith("hook:"):

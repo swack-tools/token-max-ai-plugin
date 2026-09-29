@@ -147,6 +147,9 @@ class CatalogInfoTests(unittest.TestCase):
     def test_mcp_tools_are_scanned_from_the_canonical_package(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            manifest = root / "plugins" / "example" / "mcp.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('{"mcpServers": {"package-server": {}}}')
             package_source = root / "plugins" / "example" / "src" / "server.rs"
             package_source.parent.mkdir(parents=True)
             package_source.write_text('tool("package_tool", "Package tool", "Evidence-backed package tool");')
@@ -154,6 +157,7 @@ class CatalogInfoTests(unittest.TestCase):
             root_source.parent.mkdir(parents=True)
             root_source.write_text('tool("compatibility_copy", "Compatibility copy", "Must not count");')
             capabilities, _, _ = checker._native(root, "example")
+            self.assertIn("mcp_server:package-server", capabilities)
             self.assertIn("mcp_tool:package_tool", capabilities)
             self.assertNotIn("mcp_tool:compatibility_copy", capabilities)
 
@@ -165,7 +169,7 @@ class CatalogInfoTests(unittest.TestCase):
     def test_yaml_comments_do_not_change_skill_name(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            skill = root / "plugins" / "example" / "SKILL.md"
+            skill = root / "plugins" / "example" / "skills" / "token-audit" / "SKILL.md"
             skill.parent.mkdir(parents=True)
             skill.write_text("---\nname: token-audit # YAML comment\ndescription: example\n---\n")
             capabilities, _, _ = checker._native(root, "example")
@@ -175,11 +179,25 @@ class CatalogInfoTests(unittest.TestCase):
     def test_invalid_skill_frontmatter_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            skill = root / "plugins" / "example" / "SKILL.md"
+            skill = root / "plugins" / "example" / "skills" / "token-audit" / "SKILL.md"
             skill.parent.mkdir(parents=True)
             skill.write_text("---\nname: [unterminated\n---\n")
             _, _, errors = checker._native(root, "example")
             self.assertTrue(any("valid name" in error for error in errors))
+
+    def test_nested_reference_skill_is_not_inventoried(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "plugins" / "example"
+            skill_dir = package / "skills" / "sample"
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text("---\nname: sample\n---\n")
+            nested = skill_dir / "references" / "example"
+            nested.mkdir(parents=True)
+            (nested / "SKILL.md").write_text("---\nname: not-discoverable\n---\n")
+            capabilities, _, _ = checker._native(root, "example")
+            self.assertIn("skill:sample", capabilities)
+            self.assertNotIn("skill:not-discoverable", capabilities)
 
     def test_invalid_native_manifest_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -208,6 +226,37 @@ class CatalogInfoTests(unittest.TestCase):
             capabilities, _, _ = checker._native(root, "example")
             self.assertIn("mcp_server:example-server", capabilities)
 
+    def test_non_rust_mcp_tools_are_inventoried(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "plugins" / "example"
+            source = package / "src"
+            source.mkdir(parents=True)
+            (package / "plugin.json").write_text('{"name": "example", "mcpServers": {"inline-server": {}}}')
+            (source / "server.py").write_text('@server.tool()\ndef python_tool():\n    pass\n')
+            (source / "server.ts").write_text('server.tool("typescript-tool", {});')
+            capabilities, _, _ = checker._native(root, "example")
+            self.assertIn("mcp_server:inline-server", capabilities)
+            self.assertIn("mcp_tool:python_tool", capabilities)
+            self.assertIn("mcp_tool:typescript-tool", capabilities)
+
+    def test_nested_mcp_manifest_is_not_treated_as_registered(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "plugins" / "example"
+            (package / "plugin.json").parent.mkdir(parents=True)
+            (package / "plugin.json").write_text('{"name": "example"}')
+            nested = package / "references"
+            nested.mkdir()
+            (nested / "mcp.json").write_text('{"mcpServers": {"fixture-only": {}}}')
+            capabilities, _, _ = checker._native(root, "example")
+            self.assertNotIn("mcp_server:fixture-only", capabilities)
+
+    def test_non_null_changelog_requires_resolved_source(self):
+        data = json.loads((ROOT / "catalog-info.json").read_text())
+        data["changelog"] = {}
+        self.assertTrue(any("changelog must be null" in error for error in checker.validate(ROOT, data)))
+
     def test_rust_inventory_ignores_comments_and_string_examples(self):
         source = '''
 // tool("commented", "not registered")
@@ -218,6 +267,10 @@ tool("live-tool", "Registered tool");
 
     def test_rust_inventory_accepts_raw_string_tool_names(self):
         self.assertEqual({"my-tool"}, checker._rust_tool_names('tool(r#"my-tool"#, "Raw string tool");'))
+
+    def test_rust_inventory_skips_character_literals(self):
+        source = r'''let quote = '\"'; tool("live", "ok");'''
+        self.assertEqual({"live"}, checker._rust_tool_names(source))
 
     def test_untracked_source_is_not_accepted_as_evidence(self):
         data = json.loads((ROOT / "catalog-info.json").read_text())
