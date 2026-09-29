@@ -128,9 +128,39 @@ class CatalogInfoTests(unittest.TestCase):
             root_source = root / "src" / "server.rs"
             root_source.parent.mkdir(parents=True)
             root_source.write_text('tool("compatibility_copy", "Compatibility copy", "Must not count");')
-            capabilities, _ = checker._native(root, "example")
+            capabilities, _, _ = checker._native(root, "example")
             self.assertIn("mcp_tool:package_tool", capabilities)
             self.assertNotIn("mcp_tool:compatibility_copy", capabilities)
+
+    def test_missing_canonical_package_is_rejected(self):
+        data = json.loads((ROOT / "catalog-info.json").read_text())
+        data["pluginId"] = "misspelled-package"
+        self.assertTrue(any("canonical plugin package is missing" in error for error in checker.validate(ROOT, data)))
+
+    def test_yaml_comments_do_not_change_skill_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill = root / "plugins" / "example" / "SKILL.md"
+            skill.parent.mkdir(parents=True)
+            skill.write_text("---\nname: token-audit # YAML comment\ndescription: example\n---\n")
+            capabilities, _, _ = checker._native(root, "example")
+            self.assertIn("skill:token-audit", capabilities)
+            self.assertNotIn("skill:token-audit # YAML comment", capabilities)
+
+    def test_invalid_native_manifest_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "plugins" / "example"
+            package.mkdir(parents=True)
+            (package / "mcp.json").write_text("{")
+            _, _, errors = checker._native(root, "example")
+            self.assertTrue(any("invalid JSON" in error for error in errors))
+
+    def test_untracked_source_is_not_accepted_as_evidence(self):
+        data = json.loads((ROOT / "catalog-info.json").read_text())
+        key = next(iter(data["platforms"]))
+        data["platforms"][key]["sources"] = [{"path": ".git/config", "required": True}]
+        self.assertTrue(any("untracked" in error for error in checker.validate(ROOT, data)))
 
     def test_invented_hook_target_is_rejected(self):
         data = json.loads((ROOT / "catalog-info.json").read_text())

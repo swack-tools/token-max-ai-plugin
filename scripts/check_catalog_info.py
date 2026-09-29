@@ -5,30 +5,46 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path, PurePosixPath
 
 from bs4 import BeautifulSoup
 from jsonschema import Draft202012Validator
 from markdown_it import MarkdownIt
+import yaml
 
 SCHEMA_SHA256 = "d115d44f2d32c653f97c08e889587a04353c871db55821d11e126d2e14707e13"
 SCHEMA_MARKETPLACE_COMMIT = "437c642bdac19d744dbb26b79bc2e673bebf0691"
 SCHEMA_PATH = Path(".github/schemas/upstream-info.schema.json")
 
 
-def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str]]:
+def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
     package = root / "plugins" / plugin_id
     capabilities: set[str] = set()
     hook_targets: set[str] = set()
+    errors: list[str] = []
     if not package.is_dir():
-        return capabilities, hook_targets
+        return capabilities, hook_targets, [f"canonical plugin package is missing: plugins/{plugin_id}"]
+    package_manifest = package / "plugin.json"
+    try:
+        manifest_data = json.loads(package_manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(f"canonical plugin manifest is missing or invalid: plugins/{plugin_id}/plugin.json: {exc}")
+    else:
+        if not isinstance(manifest_data, dict) or manifest_data.get("name") != plugin_id:
+            errors.append(f"catalog pluginId does not match canonical package manifest: {plugin_id}")
     for skill in package.rglob("SKILL.md"):
         text = skill.read_text(encoding="utf-8")
         match = re.search(r"(?ms)^---\s*\n(.*?)\n---", text)
-        name = re.search(r"(?m)^name:\s*['\"]?([^'\"\n]+)", match.group(1)) if match else None
-        if name:
-            capabilities.add(f"skill:{name.group(1).strip()}")
+        if match:
+            try:
+                frontmatter = yaml.safe_load(match.group(1))
+            except yaml.YAMLError:
+                frontmatter = None
+            name = frontmatter.get("name") if isinstance(frontmatter, dict) else None
+            if isinstance(name, str) and name.strip():
+                capabilities.add(f"skill:{name.strip()}")
     for command in package.rglob("commands/*.md"):
         capabilities.add(f"command:{command.stem}")
     for manifest in package.rglob("*.json"):
@@ -36,7 +52,8 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str]]:
             continue
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"native manifest is unreadable or invalid JSON: {manifest.relative_to(root).as_posix()}: {exc}")
             continue
         rel = manifest.relative_to(root).as_posix()
         hooks = data.get("hooks", {}) if isinstance(data, dict) else {}
@@ -49,12 +66,10 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str]]:
         if isinstance(servers, dict):
             capabilities.update(f"mcp_server:{name}" for name in servers)
     rust_sources = list(package.rglob("*.rs"))
-    if not rust_sources and (root / "src").is_dir():
-        rust_sources = list((root / "src").rglob("*.rs"))
     for source in rust_sources:
         text = source.read_text(encoding="utf-8", errors="replace")
         capabilities.update(f"mcp_tool:{name}" for name in re.findall(r'\btool\(\s*"([a-zA-Z0-9_-]+)"', text))
-    return capabilities, hook_targets
+    return capabilities, hook_targets, errors
 
 
 def _heading_matches(text: str, path: list[str]) -> int:
@@ -106,7 +121,15 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
         errors.append("schema violation at " + "/".join(map(str, issue.absolute_path)))
     if not isinstance(data, dict) or not isinstance(data.get("pluginId"), str):
         return errors
-    capabilities, hook_targets = _native(root, data["pluginId"])
+    capabilities, hook_targets, native_errors = _native(root, data["pluginId"])
+    errors.extend(native_errors)
+    try:
+        tracked = set(subprocess.run(
+            ["git", "ls-files", "-z"], cwd=root, check=True, capture_output=True
+        ).stdout.decode("utf-8").split("\0"))
+    except (OSError, subprocess.CalledProcessError, UnicodeError):
+        tracked = set()
+        errors.append("cannot determine tracked repository source files")
     resolved_sources: set[int] = set()
     for source in _source_entries(data):
         rel = source["path"]
@@ -115,9 +138,9 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
             errors.append(f"unsafe source path: {rel}")
             continue
         path = (root / Path(*posix.parts)).resolve()
-        if root not in path.parents or not path.is_file():
+        if root not in path.parents or not path.is_file() or rel not in tracked:
             if source.get("required", True):
-                errors.append(f"source path missing or outside repository: {rel}")
+                errors.append(f"source path missing, untracked, or outside repository: {rel}")
             continue
         required = source.get("required", True)
         resolved = True
@@ -165,6 +188,10 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
     for server in data.get("mcpServers", {}):
         if f"mcp_server:{server}" not in capabilities:
             errors.append(f"metadata declares unknown MCP server: {server}")
+    declared_servers = {f"mcp_server:{server}" for server in data.get("mcpServers", {})}
+    for capability in capabilities:
+        if capability.startswith("mcp_server:") and capability not in declared_servers:
+            errors.append(f"native MCP server missing from catalog metadata: {capability.removeprefix('mcp_server:')}")
     hooks = data.get("hooks", {})
     declared = set()
     if isinstance(hooks, list):
