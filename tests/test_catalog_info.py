@@ -47,6 +47,10 @@ class CatalogInfoTests(unittest.TestCase):
     def test_duplicate_markdown_heading_path_is_ambiguous(self):
         self.assertEqual(2, checker._heading_matches("# Parent\n\n## Same\n\n## Same\n", ["Same"]))
 
+    def test_markdown_heading_selector_uses_rendered_text(self):
+        self.assertEqual(1, checker._heading_matches("## **Install**\n\n## [Use](guide.md)\n", ["Install"]))
+        self.assertEqual(1, checker._heading_matches("## **Install**\n\n## [Use](guide.md)\n", ["Use"]))
+
     def test_stale_selector_is_rejected(self):
         data = json.loads((ROOT / "catalog-info.json").read_text())
         target = None
@@ -119,6 +123,21 @@ class CatalogInfoTests(unittest.TestCase):
         data["platforms"][key]["sources"] = [evidence]
         self.assertTrue(any("resolved source" in error for error in checker.validate(ROOT, data)))
 
+    def test_example_requires_resolved_source(self):
+        data = json.loads((ROOT / "catalog-info.json").read_text())
+        data["examples"][0]["sources"] = [{"path": "missing.md", "required": False}]
+        self.assertTrue(any("documented example requires" in error for error in checker.validate(ROOT, data)))
+
+    def test_example_platform_must_be_declared(self):
+        data = json.loads((ROOT / "catalog-info.json").read_text())
+        data["examples"][0]["platform"] = "codez"
+        self.assertTrue(any("undeclared platform" in error for error in checker.validate(ROOT, data)))
+
+    def test_unknown_source_format_is_rejected(self):
+        data = json.loads((ROOT / "catalog-info.json").read_text())
+        data["examples"][0]["sources"][0]["format"] = "markdwon"
+        self.assertTrue(any("unsupported source format" in error for error in checker.validate(ROOT, data)))
+
     def test_mcp_tools_are_scanned_from_the_canonical_package(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -132,10 +151,10 @@ class CatalogInfoTests(unittest.TestCase):
             self.assertIn("mcp_tool:package_tool", capabilities)
             self.assertNotIn("mcp_tool:compatibility_copy", capabilities)
 
-    def test_missing_canonical_package_is_rejected(self):
+    def test_noncanonical_plugin_id_is_rejected(self):
         data = json.loads((ROOT / "catalog-info.json").read_text())
-        data["pluginId"] = "misspelled-package"
-        self.assertTrue(any("canonical plugin package is missing" in error for error in checker.validate(ROOT, data)))
+        data["pluginId"] = "other"
+        self.assertTrue(any("canonical package" in error for error in checker.validate(ROOT, data)))
 
     def test_yaml_comments_do_not_change_skill_name(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -147,6 +166,15 @@ class CatalogInfoTests(unittest.TestCase):
             self.assertIn("skill:token-audit", capabilities)
             self.assertNotIn("skill:token-audit # YAML comment", capabilities)
 
+    def test_invalid_skill_frontmatter_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill = root / "plugins" / "example" / "SKILL.md"
+            skill.parent.mkdir(parents=True)
+            skill.write_text("---\nname: [unterminated\n---\n")
+            _, _, errors = checker._native(root, "example")
+            self.assertTrue(any("valid name" in error for error in errors))
+
     def test_invalid_native_manifest_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -155,6 +183,32 @@ class CatalogInfoTests(unittest.TestCase):
             (package / "mcp.json").write_text("{")
             _, _, errors = checker._native(root, "example")
             self.assertTrue(any("invalid JSON" in error for error in errors))
+
+    def test_structurally_invalid_native_manifest_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "plugins" / "example"
+            package.mkdir(parents=True)
+            (package / "mcp.json").write_text('{"mcpServers": []}')
+            _, _, errors = checker._native(root, "example")
+            self.assertTrue(any("invalid mcpServers object" in error for error in errors))
+
+    def test_mcp_servers_are_inventoried_from_the_canonical_package(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "plugins" / "example"
+            package.mkdir(parents=True)
+            (package / "mcp.json").write_text('{"mcpServers": {"example-server": {}}}')
+            capabilities, _, _ = checker._native(root, "example")
+            self.assertIn("mcp_server:example-server", capabilities)
+
+    def test_rust_inventory_ignores_comments_and_string_examples(self):
+        source = '''
+// tool("commented", "not registered")
+const DOC: &str = "tool(\\\"documented\\\", \\\"not registered\\\")";
+tool("live-tool", "Registered tool");
+'''
+        self.assertEqual({"live-tool"}, checker._rust_tool_names(source))
 
     def test_untracked_source_is_not_accepted_as_evidence(self):
         data = json.loads((ROOT / "catalog-info.json").read_text())

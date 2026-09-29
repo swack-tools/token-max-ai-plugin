@@ -17,6 +17,7 @@ import yaml
 SCHEMA_SHA256 = "d115d44f2d32c653f97c08e889587a04353c871db55821d11e126d2e14707e13"
 SCHEMA_MARKETPLACE_COMMIT = "437c642bdac19d744dbb26b79bc2e673bebf0691"
 SCHEMA_PATH = Path(".github/schemas/upstream-info.schema.json")
+CANONICAL_PLUGIN_ID = "token-max"
 
 
 def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
@@ -45,6 +46,10 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
             name = frontmatter.get("name") if isinstance(frontmatter, dict) else None
             if isinstance(name, str) and name.strip():
                 capabilities.add(f"skill:{name.strip()}")
+            else:
+                errors.append(f"skill frontmatter has no valid name: {skill.relative_to(root).as_posix()}")
+        else:
+            errors.append(f"skill frontmatter is missing or malformed: {skill.relative_to(root).as_posix()}")
     for command in package.rglob("commands/*.md"):
         capabilities.add(f"command:{command.stem}")
     for manifest in package.rglob("*.json"):
@@ -55,21 +60,114 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
         except (OSError, json.JSONDecodeError) as exc:
             errors.append(f"native manifest is unreadable or invalid JSON: {manifest.relative_to(root).as_posix()}: {exc}")
             continue
+        if not isinstance(data, dict):
+            errors.append(f"native manifest root must be a JSON object: {manifest.relative_to(root).as_posix()}")
+            continue
         rel = manifest.relative_to(root).as_posix()
         hooks = data.get("hooks", {}) if isinstance(data, dict) else {}
-        if isinstance(hooks, dict):
+        if manifest.name.lower() == "hooks.json" and (not isinstance(data, dict) or "hooks" not in data):
+            errors.append(f"native hooks manifest is missing its hooks object: {rel}")
+        if isinstance(data, dict) and "hooks" in data and not isinstance(hooks, dict):
+            errors.append(f"native hooks manifest has invalid hooks object: {rel}")
+        elif isinstance(hooks, dict):
             for event, groups in hooks.items():
-                for i, group in enumerate(groups if isinstance(groups, list) else []):
-                    for j, _ in enumerate(group.get("hooks", []) if isinstance(group, dict) else []):
+                if not isinstance(groups, list):
+                    errors.append(f"native hooks manifest event must contain a list: {rel}#/hooks/{event}")
+                    continue
+                for i, group in enumerate(groups):
+                    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                        errors.append(f"native hooks manifest group must contain a hooks list: {rel}#/hooks/{event}/{i}")
+                        continue
+                    for j, _ in enumerate(group["hooks"]):
                         hook_targets.add(f"{rel}#/hooks/{event}/{i}/hooks/{j}")
         servers = data.get("mcpServers", data if manifest.name.lower() == ".mcp.json" else {}) if isinstance(data, dict) else {}
-        if isinstance(servers, dict):
+        has_servers = isinstance(data, dict) and ("mcpServers" in data or manifest.name.lower() == ".mcp.json")
+        if manifest.name.lower() == "mcp.json" and not has_servers:
+            errors.append(f"native MCP manifest is missing its mcpServers object: {rel}")
+        if has_servers and not isinstance(servers, dict):
+            errors.append(f"native MCP manifest has invalid mcpServers object: {rel}")
+        elif isinstance(servers, dict):
             capabilities.update(f"mcp_server:{name}" for name in servers)
     rust_sources = list(package.rglob("*.rs"))
     for source in rust_sources:
         text = source.read_text(encoding="utf-8", errors="replace")
-        capabilities.update(f"mcp_tool:{name}" for name in re.findall(r'\btool\(\s*"([a-zA-Z0-9_-]+)"', text))
+        capabilities.update(f"mcp_tool:{name}" for name in _rust_tool_names(text))
     return capabilities, hook_targets, errors
+
+
+def _rust_tool_names(text: str) -> set[str]:
+    """Read tool registrations from Rust code while ignoring comments and literals."""
+    masked = list(text)
+    literals: dict[int, str] = {}
+    i = 0
+    while i < len(text):
+        if text.startswith("//", i):
+            end = text.find("\n", i)
+            end = len(text) if end < 0 else end
+            for j in range(i, end):
+                masked[j] = " "
+            i = end
+            continue
+        if text.startswith("/*", i):
+            start, depth = i, 1
+            i += 2
+            while i < len(text) and depth:
+                if text.startswith("/*", i):
+                    depth += 1
+                    i += 2
+                elif text.startswith("*/", i):
+                    depth -= 1
+                    i += 2
+                else:
+                    i += 1
+            for j in range(start, i):
+                if masked[j] != "\n":
+                    masked[j] = " "
+            continue
+        raw = re.match(r"r(#+)?\"", text[i:])
+        if raw:
+            hashes = raw.group(1) or ""
+            end_marker = f'"{hashes}'
+            end_at = text.find(end_marker, i + len(raw.group(0)))
+            end = len(text) if end_at < 0 else end_at + len(end_marker)
+            for j in range(i, end):
+                if masked[j] != "\n":
+                    masked[j] = " "
+            if end_at >= 0:
+                masked[i] = "§"
+            i = end
+            continue
+        if text[i] == '"':
+            start = i
+            i += 1
+            value = []
+            while i < len(text):
+                if text[i] == "\\" and i + 1 < len(text):
+                    value.append(text[i + 1])
+                    i += 2
+                elif text[i] == '"':
+                    i += 1
+                    break
+                else:
+                    value.append(text[i])
+                    i += 1
+            literals[start] = "".join(value)
+            for j in range(start, i):
+                if masked[j] != "\n":
+                    masked[j] = " "
+            masked[start] = "§"
+            continue
+        i += 1
+    code = "".join(masked)
+    names = set()
+    for match in re.finditer(r"\btool\s*\(\s*", code):
+        quote_at = match.end()
+        while quote_at < len(text) and text[quote_at].isspace():
+            quote_at += 1
+        name = literals.get(quote_at)
+        if name and re.fullmatch(r"[a-zA-Z0-9_-]+", name):
+            names.add(name)
+    return names
 
 
 def _heading_matches(text: str, path: list[str]) -> int:
@@ -80,13 +178,24 @@ def _heading_matches(text: str, path: list[str]) -> int:
         if token.type != "heading_open":
             continue
         level = int(token.tag[1:])
-        inline = tokens[i + 1].content.strip() if i + 1 < len(tokens) else ""
+        inline_token = tokens[i + 1] if i + 1 < len(tokens) else None
+        inline = _rendered_inline_text(inline_token).strip() if inline_token else ""
         while stack and stack[-1][0] >= level:
             stack.pop()
         stack.append((level, inline))
         if path and [part.casefold() for _, part in stack[-len(path):]] == [part.casefold() for part in path]:
             matches += 1
     return matches
+
+
+def _rendered_inline_text(token) -> str:
+    if not token or not token.children:
+        return token.content if token else ""
+    return "".join(
+        child.content if child.type in {"text", "code_inline", "html_inline"}
+        else _rendered_inline_text(child)
+        for child in token.children
+    )
 
 
 def _source_entries(data):
@@ -121,6 +230,9 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
         errors.append("schema violation at " + "/".join(map(str, issue.absolute_path)))
     if not isinstance(data, dict) or not isinstance(data.get("pluginId"), str):
         return errors
+    if data["pluginId"] != CANONICAL_PLUGIN_ID:
+        errors.append(f"pluginId must identify the canonical package: {CANONICAL_PLUGIN_ID}")
+        return errors
     capabilities, hook_targets, native_errors = _native(root, data["pluginId"])
     errors.extend(native_errors)
     try:
@@ -144,6 +256,20 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
             continue
         required = source.get("required", True)
         resolved = True
+        source_format = source.get("format")
+        source_mode = source.get("mode")
+        if source_format is not None and source_format not in {"markdown", "html"}:
+            resolved = False
+            if required:
+                errors.append(f"unsupported source format: {rel}")
+        if source_mode is not None and source_mode not in {"section", "whole"}:
+            resolved = False
+            if required:
+                errors.append(f"unsupported source mode: {rel}")
+        if source_mode == "section" and source_format not in {"markdown", "html"}:
+            resolved = False
+            if required:
+                errors.append(f"section source requires a supported format: {rel}")
         if source.get("format") == "markdown" and source.get("mode") == "section" and not source.get("heading_path"):
             resolved = False
             if required:
@@ -176,6 +302,12 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
         if resolved:
             resolved_sources.add(id(source))
     for example in data.get("examples", []):
+        platform = example.get("platform")
+        if platform not in data.get("platforms", {}):
+            errors.append(f"example references undeclared platform: {platform}")
+        example_sources = example.get("sources", [])
+        if not any(id(source) in resolved_sources for source in example_sources):
+            errors.append(f"documented example requires at least one resolved source: {example.get('id', '<unknown>')}")
         for ref in example.get("capability_refs", []):
             if ref not in capabilities:
                 errors.append(f"example references unknown native capability: {ref}")
