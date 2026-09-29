@@ -1,4 +1,5 @@
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -84,6 +85,52 @@ class CatalogInfoTests(unittest.TestCase):
         data = json.loads((ROOT / "catalog-info.json").read_text())
         data["mcpServers"]["invented-server"] = {}
         self.assertTrue(any("MCP server" in error for error in checker.validate(ROOT, data)))
+
+    def test_optional_missing_source_is_not_platform_evidence(self):
+        data = json.loads((ROOT / "catalog-info.json").read_text())
+        key = next(iter(data["platforms"]))
+        data["platforms"][key]["sources"] = [{"path": "missing-source.md", "required": False}]
+        self.assertTrue(any("resolved source" in error for error in checker.validate(ROOT, data)))
+
+    def test_optional_unresolved_selector_is_not_platform_evidence(self):
+        data = json.loads((ROOT / "catalog-info.json").read_text())
+        key = next(iter(data["platforms"]))
+        target = None
+        def find_html(value):
+            nonlocal target
+            if isinstance(value, dict):
+                if value.get("format") == "html" and "selector" in value:
+                    target = value
+                    return
+                for child in value.values():
+                    find_html(child)
+                    if target:
+                        return
+            elif isinstance(value, list):
+                for child in value:
+                    find_html(child)
+                    if target:
+                        return
+        find_html(data)
+        self.assertIsNotNone(target)
+        evidence = dict(target)
+        evidence["selector"] = "#missing-platform-evidence"
+        evidence["required"] = False
+        data["platforms"][key]["sources"] = [evidence]
+        self.assertTrue(any("resolved source" in error for error in checker.validate(ROOT, data)))
+
+    def test_mcp_tools_are_scanned_from_the_canonical_package(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package_source = root / "plugins" / "example" / "src" / "server.rs"
+            package_source.parent.mkdir(parents=True)
+            package_source.write_text('tool("package_tool", "Package tool", "Evidence-backed package tool");')
+            root_source = root / "src" / "server.rs"
+            root_source.parent.mkdir(parents=True)
+            root_source.write_text('tool("compatibility_copy", "Compatibility copy", "Must not count");')
+            capabilities, _ = checker._native(root, "example")
+            self.assertIn("mcp_tool:package_tool", capabilities)
+            self.assertNotIn("mcp_tool:compatibility_copy", capabilities)
 
     def test_invented_hook_target_is_rejected(self):
         data = json.loads((ROOT / "catalog-info.json").read_text())

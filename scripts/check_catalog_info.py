@@ -14,7 +14,6 @@ from markdown_it import MarkdownIt
 
 SCHEMA_SHA256 = "d115d44f2d32c653f97c08e889587a04353c871db55821d11e126d2e14707e13"
 SCHEMA_MARKETPLACE_COMMIT = "437c642bdac19d744dbb26b79bc2e673bebf0691"
-SCHEMA_MARKETPLACE_COMMIT = "437c642bdac19d744dbb26b79bc2e673bebf0691"
 SCHEMA_PATH = Path(".github/schemas/upstream-info.schema.json")
 
 
@@ -49,7 +48,10 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str]]:
         servers = data.get("mcpServers", data if manifest.name.lower() == ".mcp.json" else {}) if isinstance(data, dict) else {}
         if isinstance(servers, dict):
             capabilities.update(f"mcp_server:{name}" for name in servers)
-    for source in (root / "src").rglob("*.rs") if (root / "src").exists() else []:
+    rust_sources = list(package.rglob("*.rs"))
+    if not rust_sources and (root / "src").is_dir():
+        rust_sources = list((root / "src").rglob("*.rs"))
+    for source in rust_sources:
         text = source.read_text(encoding="utf-8", errors="replace")
         capabilities.update(f"mcp_tool:{name}" for name in re.findall(r'\btool\(\s*"([a-zA-Z0-9_-]+)"', text))
     return capabilities, hook_targets
@@ -95,7 +97,7 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
         schema_bytes = schema_file.read_bytes()
         schema = json.loads(schema_bytes)
         if hashlib.sha256(schema_bytes).hexdigest() != SCHEMA_SHA256:
-            errors.append("pinned schema digest mismatch; refresh only to an approved marketplace schema")
+            errors.append(f"pinned schema digest mismatch for marketplace revision {SCHEMA_MARKETPLACE_COMMIT}")
         if data is None:
             data = json.loads((root / "catalog-info.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -105,6 +107,7 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
     if not isinstance(data, dict) or not isinstance(data.get("pluginId"), str):
         return errors
     capabilities, hook_targets = _native(root, data["pluginId"])
+    resolved_sources: set[int] = set()
     for source in _source_entries(data):
         rel = source["path"]
         posix = PurePosixPath(rel)
@@ -117,23 +120,38 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
                 errors.append(f"source path missing or outside repository: {rel}")
             continue
         required = source.get("required", True)
-        if required and source.get("format") == "markdown" and source.get("mode") == "section" and not source.get("heading_path"):
-            errors.append(f"Markdown section is missing its heading selector: {rel}")
-        if required and source.get("format") == "html" and source.get("mode") == "section" and not source.get("selector"):
-            errors.append(f"HTML section is missing its CSS selector: {rel}")
+        resolved = True
+        if source.get("format") == "markdown" and source.get("mode") == "section" and not source.get("heading_path"):
+            resolved = False
+            if required:
+                errors.append(f"Markdown section is missing its heading selector: {rel}")
+        if source.get("format") == "html" and source.get("mode") == "section" and not source.get("selector"):
+            resolved = False
+            if required:
+                errors.append(f"HTML section is missing its CSS selector: {rel}")
         if source.get("format") == "markdown" and source.get("heading_path"):
             try:
                 matches = _heading_matches(path.read_text(encoding="utf-8"), source["heading_path"])
-                if required and matches != 1:
-                    errors.append(f"Markdown heading selector must match exactly once: {rel}")
+                if matches != 1:
+                    resolved = False
+                    if required:
+                        errors.append(f"Markdown heading selector must match exactly once: {rel}")
             except (OSError, UnicodeError):
-                errors.append(f"cannot resolve Markdown source: {rel}")
+                resolved = False
+                if required:
+                    errors.append(f"cannot resolve Markdown source: {rel}")
         if source.get("format") == "html" and source.get("selector"):
             try:
-                if len(BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser").select(source["selector"])) != 1 and required:
-                    errors.append(f"HTML selector must match exactly once: {rel}")
+                if len(BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser").select(source["selector"])) != 1:
+                    resolved = False
+                    if required:
+                        errors.append(f"HTML selector must match exactly once: {rel}")
             except Exception:
-                errors.append(f"HTML selector invalid: {rel}")
+                resolved = False
+                if required:
+                    errors.append(f"HTML selector invalid: {rel}")
+        if resolved:
+            resolved_sources.add(id(source))
     for example in data.get("examples", []):
         for ref in example.get("capability_refs", []):
             if ref not in capabilities:
@@ -163,8 +181,11 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
     for _target in hook_targets - declared:
         errors.append("native hook is missing a catalog note")
     for platform in data.get("platforms", {}).values():
-        if platform.get("status") in {"documented", "unsupported"} and not platform.get("sources"):
-            errors.append("documented platform claim requires source evidence")
+        sources = platform.get("sources", [])
+        if platform.get("status") in {"documented", "unsupported"} and not any(
+            id(source) in resolved_sources for source in sources
+        ):
+            errors.append("documented platform claim requires at least one resolved source")
     return errors
 
 
