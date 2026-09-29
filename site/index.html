@@ -42,13 +42,22 @@
 <pre><code>/plugin marketplace add swack-tools/token-max-ai-plugin
 /plugin install token-max@swack-tools
 /token-max:token-audit Review this session and project.</code></pre>
-<h3>Codex Desktop</h3>
-<p>Ask Codex in a chat:</p>
-<pre><code>Add the plugin marketplace swack-tools/token-max-ai-plugin and install token-max@swack-tools.</code></pre>
-<p>The agent can register the marketplace and install the plugin through its in-app tools. You do not need an external terminal. After installation, open a new chat, choose the installed skill from <code>/skills</code> where supported, or send:</p>
+<h3>ChatGPT desktop app / Codex Desktop</h3>
+<p>Add the marketplace in the app's settings:</p>
+<ol>
+<li>Open <strong>Settings → Plugins → Marketplace</strong>.</li>
+<li>Select <strong>Add → Add plugin marketplace</strong>.</li>
+<li>For <strong>Source</strong>, enter <code>https://github.com/swack-tools/token-max-ai-plugin</code>. The dialog also accepts a Git URL or a local folder.</li>
+<li>Leave <strong>Sparse paths</strong> empty. This repository's Codex marketplace manifest is at <code>.agents/plugins/marketplace.json</code> in the repository root, so the marketplace directory is the root.</li>
+<li>Leave <strong>Git ref</strong> empty to use the default branch, or enter <code>main</code>.</li>
+<li>Add the marketplace, select <strong>Token Max</strong>, and install it. Start a new chat and invoke it with:</li>
+</ol>
 <pre><code>$token-audit Review this session and project. Rank the best token improvements.</code></pre>
-<p>For clients with a plugin directory, choose <strong>Swack Tools</strong> and install <strong>Token Max</strong> after the source is registered. UI labels vary by client. Installation is distinct from merely cloning the repository.</p>
-<p>Official references: <a href="https://developers.openai.com/plugins/build/plugins">OpenAI plugin packaging and marketplaces</a>, <a href="https://code.claude.com/docs/en/plugin-marketplaces">Claude marketplaces</a>, and <a href="https://support.claude.com/en/articles/13837440-use-plugins-in-claude">Claude Desktop plugin installation</a>.</p>
+<p>This is a user-facing desktop UI workflow. Marketplace registration and installation through Settings are distinct from the model-facing plugin-management tools exposed to a chat agent; those tools may not provide marketplace setup actions. Use Settings for this setup instead of asking the chat agent to register or install the marketplace.</p>
+<p><strong>Optional Codex CLI path:</strong> the documented CLI command can register a Git-backed marketplace separately:</p>
+<pre><code>codex plugin marketplace add https://github.com/swack-tools/token-max-ai-plugin.git --ref main</code></pre>
+<p>This registers the source. Use the desktop Plugins UI to install and test it in the ChatGPT desktop app.</p>
+<p>Official references: <a href="https://developers.openai.com/plugins/build/plugins">OpenAI plugin packaging and marketplaces</a>, <a href="https://developers.openai.com/plugins/build/plugins">Codex CLI marketplace commands</a>, <a href="https://code.claude.com/docs/en/plugin-marketplaces">Claude marketplaces</a>, and <a href="https://support.claude.com/en/articles/13837440-use-plugins-in-claude">Claude Desktop plugin installation</a>.</p>
 </section>
 <section id="what-you-get"><h2><span class="section-number">02</span>Your report stays in chat</h2>
 <p>The skill reviews the visible session and accessible project, then returns up to five prioritized findings with references, evidence labels, tradeoffs, quality checks, a copyable fix prompt per actionable finding and one next experiment. Ask to save or export the report if you want a file; with file tools, the agent can write <code>.token-audit/AUDIT.md</code>.</p>
