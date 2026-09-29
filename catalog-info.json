@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 1,
+  "pluginId": "token-max",
+  "overview": {
+    "path": "site/index.html",
+    "format": "html",
+    "mode": "section",
+    "required": true,
+    "selector": "#overview"
+  },
+  "examples": [
+    {
+      "id": "token-audit-claude",
+      "capability_refs": ["skill:token-audit"],
+      "title": "Request a report-only audit in Claude",
+      "input_or_trigger": "/token-max:token-audit Review this session and project.",
+      "platform": "claude-code",
+      "prerequisites": ["Install Token Max in Claude and provide access to the session or project to review."],
+      "expected_behavior": "Return an evidence-backed report in chat. Do not edit code or configuration, install tools, or apply proposed fixes. Report unavailable history and counters as unknown.",
+      "sources": [
+        {
+          "path": "README.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Use"]
+        },
+        {
+          "path": "plugins/token-max/skills/token-audit/SKILL.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Token audit — report only"]
+        },
+        {
+          "path": "site/index.html",
+          "format": "html",
+          "mode": "section",
+          "required": true,
+          "selector": "#overview"
+        }
+      ],
+      "evidence": "documented"
+    },
+    {
+      "id": "token-audit-codex",
+      "capability_refs": ["skill:token-audit"],
+      "title": "Request an audit in Codex",
+      "input_or_trigger": "$token-audit Review this session and project.",
+      "platform": "codex",
+      "prerequisites": ["Install Token Max in Codex and provide access to the session or project to review."],
+      "expected_behavior": "Return prioritized findings, evidence, tradeoffs, quality checks, unknowns, and proposed next steps in chat. Leave code and configuration unchanged.",
+      "sources": [
+        {
+          "path": "README.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Use"]
+        },
+        {
+          "path": "site/index.html",
+          "format": "html",
+          "mode": "section",
+          "required": true,
+          "selector": "#run-only-the-local-collector"
+        },
+        {
+          "path": "plugins/token-max/skills/token-audit/SKILL.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Token audit — report only"]
+        }
+      ],
+      "evidence": "documented"
+    },
+    {
+      "id": "token-audit-optional-collector",
+      "capability_refs": ["skill:token-audit"],
+      "title": "Request optional Codex measurements",
+      "input_or_trigger": "Use the internal collector to measure this project's matching Codex session.",
+      "platform": "codex",
+      "prerequisites": ["Request quantitative Codex measurements. The host must already provide execution, Python 3.10 or later, and Git or ripgrep."],
+      "expected_behavior": "When the host already provides the required runtime, collect Codex log metadata locally. Otherwise continue with the native in-app review and disclose that measurements are unavailable. The default review requires no terminal setup.",
+      "sources": [
+        {
+          "path": "site/index.html",
+          "format": "html",
+          "mode": "section",
+          "required": true,
+          "selector": "#run-only-the-local-collector"
+        },
+        {
+          "path": "plugins/token-max/skills/token-audit/SKILL.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Token audit — report only"]
+        },
+        {
+          "path": "plugins/token-max/skills/token-audit/references/collector.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Optional internal Codex collector"]
+        }
+      ],
+      "evidence": "documented"
+    },
+    {
+      "id": "token-audit-fix-prompt",
+      "capability_refs": ["skill:token-audit"],
+      "title": "Ask for fix prompts as guidance",
+      "input_or_trigger": "$token-audit Review this project and include a fix prompt for each actionable finding.",
+      "platform": "codex",
+      "prerequisites": ["Run an audit in the supported client."],
+      "expected_behavior": "Include copyable implementation guidance for actionable findings. A prompt is illustrative guidance for a separate request; the audit does not execute it. The example does not demonstrate net token savings.",
+      "sources": [
+        {
+          "path": "site/index.html",
+          "format": "html",
+          "mode": "section",
+          "required": true,
+          "selector": "#fix-prompts"
+        },
+        {
+          "path": "README.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Use"]
+        },
+        {
+          "path": "plugins/token-max/skills/token-audit/SKILL.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Token audit — report only"]
+        }
+      ],
+      "evidence": "documented"
+    }
+  ],
+  "platforms": {
+    "claude-code": {
+      "status": "documented",
+      "notes": "Use the /token-max:token-audit skill invocation in chat.",
+      "sources": [
+        {
+          "path": "README.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Use"]
+        }
+      ]
+    },
+    "claude-desktop": {
+      "status": "documented",
+      "notes": "Install the plugin through the app and invoke the Claude skill in chat.",
+      "sources": [
+        {
+          "path": "README.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Install"]
+        },
+        {
+          "path": "README.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Use"]
+        }
+      ]
+    },
+    "codex": {
+      "status": "documented",
+      "notes": "Install through the app, then invoke $token-audit or choose the skill where available.",
+      "sources": [
+        {
+          "path": "README.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Install"]
+        },
+        {
+          "path": "README.md",
+          "format": "markdown",
+          "mode": "section",
+          "required": true,
+          "heading_path": ["Use"]
+        },
+        {
+          "path": "site/index.html",
+          "format": "html",
+          "mode": "section",
+          "required": true,
+          "selector": "#install-and-run"
+        }
+      ]
+    },
+    "slack": {
+      "status": "not_documented",
+      "notes": "The repository does not document a Slack integration.",
+      "sources": []
+    }
+  },
+  "mcpServers": {},
+  "hooks": {},
+  "changelog": null
+}
