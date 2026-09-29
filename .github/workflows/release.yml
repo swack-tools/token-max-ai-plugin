@@ -30,6 +30,10 @@ jobs:
         run: |
           VERSION="$(python3 -c 'import json; print(json.load(open("plugins/token-max/.claude-plugin/plugin.json"))["version"])')"
           test "$GITHUB_REF_NAME" = "v$VERSION"
+      - name: Install catalog validator dependencies
+        run: python3 -m pip install -r requirements-catalog.txt
+      - name: Validate catalog metadata
+        run: python3 scripts/check_catalog_info.py
       - name: Build Claude and Codex archives
         run: python3 scripts/package_release.py "$RUNNER_TEMP/release"
       - name: Publish release

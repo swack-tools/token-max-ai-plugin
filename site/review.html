@@ -114,7 +114,7 @@ elapsed_seconds, retries, acceptance_pass, review_result, missing_evidence</code
 <section id="reproduce"><h2>Reproduce the review</h2>
 <p>This maintainer-only reproduction is not an installation step. Optional collection/tests need Python 3.10+ and Git (or ripgrep for inventory fallback). Exact text-token benchmarking also needs the optional tokenizer. The recorded run used an isolated environment with <code>tiktoken==0.14.0</code>. Installation and initial encoding retrieval may require network access; fixture processing makes no model calls.</p>
 <pre><code>python3 -m venv .venv
-.venv/bin/python -m pip install tiktoken==0.14.0
+.venv/bin/python -m pip install -r requirements-catalog.txt tiktoken==0.14.0
 .venv/bin/python scripts/benchmark.py --output .token-audit-benchmark.json
 .venv/bin/python -m unittest discover -s tests -q
 python3 scripts/check_site.py</code></pre>

@@ -203,7 +203,9 @@ Report changes, validation and remaining uncertainty.</code></pre>
 <section id="development-and-removal"><h2><span class="section-number">09</span>Maintenance and removal</h2>
 <p>Uninstall or disable <strong>token-max</strong> through your app's plugin manager. Previously exported reports remain yours. If you used the old symlink installer, remove only that verified Token Max link before installing the marketplace version to avoid duplicate discovery.</p>
 <details><summary>Maintainer commands (not needed by plugin users)</summary>
-<pre><code>git archive --format=zip HEAD:plugins/token-max &gt; site/token-max.zip
+<pre><code>python3 -m pip install -r requirements-catalog.txt
+python3 scripts/check_catalog_info.py
+git archive --format=zip HEAD:plugins/token-max &gt; site/token-max.zip
 python3 -m unittest discover -s tests -q
 python3 scripts/check_site.py
 claude plugin validate .</code></pre>
