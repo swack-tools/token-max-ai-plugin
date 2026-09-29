@@ -128,8 +128,11 @@ def _rust_tool_names(text: str) -> set[str]:
         if raw:
             hashes = raw.group(1) or ""
             end_marker = f'"{hashes}'
-            end_at = text.find(end_marker, i + len(raw.group(0)))
+            value_start = i + len(raw.group(0))
+            end_at = text.find(end_marker, value_start)
             end = len(text) if end_at < 0 else end_at + len(end_marker)
+            if end_at >= 0:
+                literals[i] = text[value_start:end_at]
             for j in range(i, end):
                 if masked[j] != "\n":
                     masked[j] = " "
@@ -306,6 +309,9 @@ def validate(root: Path, data: dict | None = None) -> list[str]:
         if platform not in data.get("platforms", {}):
             errors.append(f"example references undeclared platform: {platform}")
         example_sources = example.get("sources", [])
+        singular_source = example.get("source")
+        if isinstance(singular_source, dict):
+            example_sources = [*example_sources, singular_source]
         if not any(id(source) in resolved_sources for source in example_sources):
             errors.append(f"documented example requires at least one resolved source: {example.get('id', '<unknown>')}")
         for ref in example.get("capability_refs", []):

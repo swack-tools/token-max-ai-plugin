@@ -128,6 +128,12 @@ class CatalogInfoTests(unittest.TestCase):
         data["examples"][0]["sources"] = [{"path": "missing.md", "required": False}]
         self.assertTrue(any("documented example requires" in error for error in checker.validate(ROOT, data)))
 
+    def test_example_accepts_schema_singular_source(self):
+        data = json.loads((ROOT / "catalog-info.json").read_text())
+        example = data["examples"][0]
+        example["source"] = example["sources"].pop()
+        self.assertFalse(any("documented example requires" in error for error in checker.validate(ROOT, data)))
+
     def test_example_platform_must_be_declared(self):
         data = json.loads((ROOT / "catalog-info.json").read_text())
         data["examples"][0]["platform"] = "codez"
@@ -209,6 +215,9 @@ const DOC: &str = "tool(\\\"documented\\\", \\\"not registered\\\")";
 tool("live-tool", "Registered tool");
 '''
         self.assertEqual({"live-tool"}, checker._rust_tool_names(source))
+
+    def test_rust_inventory_accepts_raw_string_tool_names(self):
+        self.assertEqual({"my-tool"}, checker._rust_tool_names('tool(r#"my-tool"#, "Raw string tool");'))
 
     def test_untracked_source_is_not_accepted_as_evidence(self):
         data = json.loads((ROOT / "catalog-info.json").read_text())
