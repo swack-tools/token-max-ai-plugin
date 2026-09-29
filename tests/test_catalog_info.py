@@ -199,6 +199,20 @@ class CatalogInfoTests(unittest.TestCase):
             self.assertIn("skill:sample", capabilities)
             self.assertNotIn("skill:not-discoverable", capabilities)
 
+    def test_command_inventory_ignores_nested_documentation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "plugins" / "example"
+            command_root = package / "commands"
+            command_root.mkdir(parents=True)
+            (command_root / "actual.md").write_text("# Actual command")
+            nested = package / "skills" / "sample" / "references" / "commands"
+            nested.mkdir(parents=True)
+            (nested / "fixture.md").write_text("# Not a command")
+            capabilities, _, _ = checker._native(root, "example")
+            self.assertIn("command:actual", capabilities)
+            self.assertNotIn("command:fixture", capabilities)
+
     def test_invalid_native_manifest_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -239,6 +253,10 @@ class CatalogInfoTests(unittest.TestCase):
             self.assertIn("mcp_server:inline-server", capabilities)
             self.assertIn("mcp_tool:python_tool", capabilities)
             self.assertIn("mcp_tool:typescript-tool", capabilities)
+
+    def test_javascript_inventory_handles_template_literals(self):
+        source = 'server.tool(`live-tool`, {}); const docs = `server.tool("fake-tool", {})`;'
+        self.assertEqual({"live-tool"}, checker._js_tool_names(source))
 
     def test_nested_mcp_manifest_is_not_treated_as_registered(self):
         with tempfile.TemporaryDirectory() as directory:

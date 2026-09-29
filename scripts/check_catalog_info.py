@@ -59,8 +59,15 @@ def _native(root: Path, plugin_id: str) -> tuple[set[str], set[str], list[str]]:
                 errors.append(f"skill frontmatter has no valid name: {skill.relative_to(root).as_posix()}")
         else:
             errors.append(f"skill frontmatter is missing or malformed: {skill.relative_to(root).as_posix()}")
-    for command in package.rglob("commands/*.md"):
-        capabilities.add(f"command:{command.stem}")
+    command_roots_value = manifest_data.get("commands", "commands") if isinstance(manifest_data, dict) else "commands"
+    command_roots = command_roots_value if isinstance(command_roots_value, list) else [command_roots_value]
+    for command_root_value in command_roots:
+        if not isinstance(command_root_value, str):
+            continue
+        command_root = (package / command_root_value).resolve()
+        if package.resolve() in command_root.parents or command_root == package.resolve():
+            for command in command_root.glob("*.md") if command_root.is_dir() else []:
+                capabilities.add(f"command:{command.stem}")
     manifest_files = [package / "plugin.json", package / "hooks.json", package / "mcp.json", package / ".mcp.json"]
     for manifest in manifest_files:
         if not manifest.is_file():
@@ -234,6 +241,28 @@ def _js_tool_names(text: str) -> set[str]:
                 if masked[j] != "\n":
                     masked[j] = " "
             i = end
+            continue
+        if text[i] == "`":
+            start = i
+            i += 1
+            value = []
+            while i < len(text):
+                if text[i] == "\\" and i + 1 < len(text):
+                    value.append(text[i + 1])
+                    i += 2
+                elif text[i] == "`":
+                    i += 1
+                    break
+                else:
+                    value.append(text[i])
+                    i += 1
+            literal = "".join(value)
+            if "${" not in literal:
+                literals[start] = literal
+            for j in range(start, i):
+                if masked[j] != "\n":
+                    masked[j] = " "
+            masked[start] = "§"
             continue
         if text[i] in {'"', "'"}:
             quote = text[i]
